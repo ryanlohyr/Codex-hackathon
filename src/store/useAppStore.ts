@@ -97,19 +97,31 @@ export const useAppStore = create<AppState>()(
         return id
       },
       upsertVisualizationNodeConfig: (id, config) => {
-        set((state) => ({
-          nodes: state.nodes.map((node) =>
-            node.id === id && node.type === 'visualizationNode'
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config,
-                  },
-                }
-              : node,
-          ),
-        }))
+        set((state) => {
+          const exists = state.nodes.some((node) => node.id === id && node.type === 'visualizationNode')
+          if (exists) {
+            return {
+              nodes: state.nodes.map((node) =>
+                node.id === id && node.type === 'visualizationNode'
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        config,
+                      },
+                    }
+                  : node,
+              ),
+            }
+          }
+          const newNode: AppNode = {
+            id,
+            type: 'visualizationNode',
+            position: getVisualizationNodePosition(state.nodes.length),
+            data: { config, createdAt: Date.now() },
+          }
+          return { nodes: [...state.nodes, newNode] }
+        })
       },
       setNodes: (updater) => {
         set((state) => ({ nodes: resolveUpdater(updater, state.nodes) }))

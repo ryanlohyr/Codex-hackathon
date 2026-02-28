@@ -5,6 +5,7 @@ import type { AgentContext } from '../../types/agent'
 import type { RenderType } from '../../types/visualization'
 import type { ChecklistItem } from './create-visualization-with-repair'
 import { BLUEPRINT_SYSTEM_PROMPT, getRenderTypeRules } from './prompts'
+import { SCENE_BOILERPLATES } from './webgl-boilerplates'
 
 const MAX_RETRIES = 5
 
@@ -14,6 +15,12 @@ const blueprintWithChecklistSchema = z
       .string()
       .describe(
         'The full Visualization Blueprint as a markdown document — includes Visual Style, Learning Goal, Analogy, Visual Concept, Simulation Variables, Info Points, and Scaffolding Steps sections.',
+      ),
+    boilerplateKey: z
+      .string()
+      .nullable()
+      .describe(
+        'If an available boilerplate template fits this visualization, set this to its key (e.g. "webgl_3d_real_globe_v1"). Set to null if no template is a good fit.',
       ),
     checklist: z.array(
       z
@@ -38,7 +45,7 @@ export async function generateBlueprint(args: {
   context: AgentContext
   renderType: RenderType
 }): Promise<
-  { ok: true; blueprint: string; checklist: ChecklistItem[] } | { ok: false; error: string }
+  { ok: true; blueprint: string; checklist: ChecklistItem[]; boilerplateKey: string | null } | { ok: false; error: string }
 > {
   console.log('[generateBlueprint] starting', {
     renderType: args.renderType,
@@ -85,6 +92,16 @@ export async function generateBlueprint(args: {
           'Do NOT include checklist items for: controls panel, slider UI, button UI, scaffolded steps panel, or step navigation.',
           'The generated code only needs to initialize runtimeState.params defaults and build the 3D scene.',
           '',
+          '=== AVAILABLE BOILERPLATE TEMPLATES ===',
+          'If a template below is a good starting point for this visualization, set boilerplateKey to its key. Otherwise set boilerplateKey to null.',
+          ...SCENE_BOILERPLATES.filter((b) => b.renderType === args.renderType).map(
+            (b) => `- key: "${b.key}" — ${b.name}. Use for: ${b.whenToUse}`,
+          ),
+          ...(SCENE_BOILERPLATES.filter((b) => b.renderType === args.renderType).length === 0
+            ? ['No boilerplate templates available for this render type.']
+            : []),
+          '=== END AVAILABLE BOILERPLATE TEMPLATES ===',
+          '',
           `Render type: ${args.renderType}`,
           '',
           '=== RENDERING ENGINE RULES ===',
@@ -124,7 +141,7 @@ export async function generateBlueprint(args: {
         checklistItems: checklist.map((i) => i.id),
       })
 
-      return { ok: true, blueprint: object.blueprint, checklist }
+      return { ok: true, blueprint: object.blueprint, checklist, boilerplateKey: object.boilerplateKey ?? null }
     } catch (error) {
       lastError = error instanceof Error ? error.message : 'Blueprint generation failed'
       console.error(`[generateBlueprint] attempt ${attempt} failed`, error)

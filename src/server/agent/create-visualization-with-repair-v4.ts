@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import type {
+  FunctionTool,
   ResponseInputItem,
   ResponseFunctionToolCall,
 } from 'openai/resources/responses/responses'
@@ -15,8 +16,83 @@ import {
   executeToolCall,
   formatCodeState,
 } from './viz-edit-utils'
+import { formatBoilerplatesForPrompt, getSceneBoilerplate } from './webgl-boilerplates'
 
 export type { ChecklistItem }
+
+const insertBoilerplateTool: FunctionTool = {
+  type: 'function',
+  name: 'insert_boilerplate',
+  description:
+    'Insert a predefined scene boilerplate by key. Use this to quickly start with a known-good template, then adapt it to the blueprint.',
+  strict: false,
+  parameters: {
+    type: 'object',
+    properties: {
+      key: {
+        type: 'string',
+        description: 'Boilerplate key (for example: webgl_3d_real_globe_v1).',
+      },
+      mode: {
+        type: 'string',
+        description: 'Insertion mode: "replace_if_empty" (default), "replace_all", or "append".',
+      },
+    },
+    required: ['key'],
+  },
+}
+
+const v4Tools: FunctionTool[] = [...editTools, insertBoilerplateTool]
+
+function executeToolCallV4(
+  toolName: string,
+  args: Record<string, unknown>,
+  state: { currentCode: string },
+  checklist: ChecklistItem[],
+  renderType: RenderType,
+): string {
+  if (toolName === 'insert_boilerplate') {
+    const { key, mode } = args as { key: string; mode?: string }
+    const selected = getSceneBoilerplate(key, renderType)
+    if (!selected) {
+      return JSON.stringify({
+        success: false,
+        error: `Unknown boilerplate key "${key}" for render type ${renderType}.`,
+      })
+    }
+
+    const insertionMode = mode ?? 'replace_if_empty'
+    if (!['replace_if_empty', 'replace_all', 'append'].includes(insertionMode)) {
+      return JSON.stringify({
+        success: false,
+        error: `Invalid mode "${insertionMode}". Use replace_if_empty, replace_all, or append.`,
+      })
+    }
+
+    if (insertionMode === 'replace_if_empty' && state.currentCode.trim().length > 0) {
+      return JSON.stringify({
+        success: false,
+        error: 'Code is not empty. Use mode "replace_all" or "append" if you want to insert now.',
+      })
+    }
+
+    if (insertionMode === 'append') {
+      state.currentCode = state.currentCode ? `${state.currentCode}\n\n${selected.code}` : selected.code
+    } else {
+      state.currentCode = selected.code
+    }
+
+    console.log(`[v4] insert_boilerplate: ${selected.key} (${insertionMode})`)
+    return JSON.stringify({
+      success: true,
+      key: selected.key,
+      mode: insertionMode,
+      lines: state.currentCode.split('\n').length,
+    })
+  }
+
+  return executeToolCall(toolName, args, state, checklist, '[v4]')
+}
 
 // ---------------------------------------------------------------------------
 // Main export — multi-turn conversation using OpenAI Responses API
@@ -43,6 +119,11 @@ export async function generateVisualizationCodeV4(args: {
 
   const state = { currentCode: '' }
   const renderRules = getRenderTypeRules(args.renderType).join('\n')
+  const availableBoilerplates = formatBoilerplatesForPrompt(args.renderType)
+  const globeHintRegex = /\b(earth|globe|world|geography|latitude|longitude|tectonic|climate)\b/i
+  const recommendedBoilerplate = globeHintRegex.test(`${args.userPrompt}\n${args.blueprint}`)
+    ? 'webgl_3d_real_globe_v1'
+    : null
 
   // ---- System instructions (sent once, cached by OpenAI) ----
   const is3D = args.renderType === '3D_WEBGL'
@@ -75,6 +156,7 @@ export async function generateVisualizationCodeV4(args: {
   const instructions = [
     'You are a code-generation agent. You receive a checklist and current code state.',
     'Use find_and_replace to write and edit code. Work through uncompleted checklist items in order.',
+    'If a predefined template fits, call insert_boilerplate first, then customize it with find_and_replace.',
     'After fully implementing a checklist item, call markChecklistItemDone with its id.',
     'Do NOT explain, narrate, or send text-only responses. Just make tool calls.',
     'When all checklist items are done, stop making tool calls.',
@@ -110,6 +192,17 @@ export async function generateVisualizationCodeV4(args: {
     '=== RENDERING ENGINE RULES ===',
     renderRules,
     '=== END RENDERING ENGINE RULES ===',
+    '',
+    `=== AVAILABLE BOILERPLATES (${args.renderType}) ===`,
+    availableBoilerplates,
+    `=== END AVAILABLE BOILERPLATES ===`,
+    ...(recommendedBoilerplate
+      ? [
+          '',
+          `Recommended for this prompt: ${recommendedBoilerplate}`,
+          'If you use it, call insert_boilerplate with mode "replace_if_empty" before other edits.',
+        ]
+      : []),
   ].join('\n')
 
   // ---- Initial user message ----
@@ -168,7 +261,7 @@ export async function generateVisualizationCodeV4(args: {
         model: 'gpt-5.2',
         instructions,
         input: nextInput,
-        tools: editTools,
+        tools: v4Tools,
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       })
 
@@ -222,7 +315,7 @@ export async function generateVisualizationCodeV4(args: {
 
       for (const fc of functionCalls) {
         const toolArgs = JSON.parse(fc.arguments) as Record<string, unknown>
-        const output = executeToolCall(fc.name, toolArgs, state, checklist, '[v4]')
+        const output = executeToolCallV4(fc.name, toolArgs, state, checklist, args.renderType)
         console.log(`[v4] ${fc.name}: ${output.substring(0, 200)}`)
 
         toolResults.push({
@@ -304,7 +397,7 @@ export async function generateVisualizationCodeV4(args: {
         model: 'gpt-5.2',
         instructions,
         input: repairInput,
-        tools: editTools,
+        tools: v4Tools,
       })
 
       const repairCalls = repairResponse.output.filter(
@@ -315,7 +408,7 @@ export async function generateVisualizationCodeV4(args: {
 
       for (const fc of repairCalls) {
         const toolArgs = JSON.parse(fc.arguments) as Record<string, unknown>
-        const output = executeToolCall(fc.name, toolArgs, state, checklist, '[v4]')
+        const output = executeToolCallV4(fc.name, toolArgs, state, checklist, args.renderType)
         console.log(`[v4] repair ${fc.name}: ${output.substring(0, 200)}`)
       }
     }

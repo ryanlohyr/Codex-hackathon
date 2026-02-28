@@ -96,7 +96,7 @@ If the user is only asking a question, answer conversationally without tools.`,
       continue
     }
 
-    const { blueprint, checklist } = blueprintResult
+    const { blueprint, checklist, boilerplateKey } = blueprintResult
     emit({ type: 'blueprint_ready', callId, blueprint })
 
     emit({
@@ -120,6 +120,7 @@ If the user is only asking a question, answer conversationally without tools.`,
         renderType,
         userPrompt: toolPrompt,
         runtimePanels: true,
+        boilerplateKey,
       }),
     ])
 

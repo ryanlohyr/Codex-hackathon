@@ -1,0 +1,105 @@
+{
+  "id": "uXdIklrNXN63LM2o60soN",
+  "config": {
+    "type": "terrain",
+    "renderType": "3D_WEBGL",
+    "theme": "dark",
+    "title": "\"Global Timeline of COVID-19 First Confirmed Cases & Importation Flows-1772257105117\"",
+    "summary": "An animated world map timeline where countries light up on their first confirmed COVID-19 date and directional flow arcs indicate likely early importation pathways between countries over time.",
+    "params": {
+      "time": 120,
+      "windowDays": 60,
+      "seedingThreshold": 40,
+      "regionFocus": 0,
+      "caseIntensity": 0
+    },
+    "generatedSceneCode": "",
+    "blueprint": "## Visual Style\n**Theme: dark** — a deep, subdued world-map backdrop makes “lighting up” first-detection events and travel-flow arcs highly legible, and it supports an immersive timeline feel without competing with geographic detail.\n\n**Palette (semantic roles)**\n- **backgroundOcean**: `#0b1220` (map background)\n- **landBase**: `#1f2a44` (country land silhouettes / low-contrast basemap)\n- **nodeInactive**: `#6b7280` (countries not yet lit)\n- **nodeActive**: `#22c55e` (country node when first confirmed case occurs)\n- **flowArc**: `#38bdf8` (directional importation lines/arcs)\n- **highlight**: `#f59e0b` (selected region, “major seeding event” emphasis)\n\n## Learning Goal\nUnderstand how COVID-19 transitioned from an initial outbreak to a global pandemic through time-ordered introductions between countries, and how early travel-linked seeding events shaped regional outbreaks.\n\n## Analogy\n**“Sparks and wind”** — the first case in a country is a spark landing on a new patch; flow arcs show the prevailing “wind” of early importations, and node intensity shows how that spark grows into a larger fire.\n\n## Visual Concept\n- **Main elements**\n  - A **flat or subtly curved world map** with minimal borders (to reduce clutter).\n  - **Country nodes** positioned at country centroids (or major hub city marker for small countries), initially dim.\n  - A **global time slider** and play/pause controls. A **date readout** sits prominently (e.g., “2020-03-11”).\n  - **Directional flow arcs** (curved lines) connecting likely source countries to newly affected countries at their first-confirmation moment.\n  - Optional **cumulative case intensity layer**: node size and/or glow increases with cumulative cases (with a legend).\n\n- **Spatial arrangement**\n  - Map centered by default on Eurasia/Africa to keep early spread visible; user can pan/zoom.\n  - A small **timeline strip** along the bottom shows a histogram of “new first-confirmations per day” to visually indicate waves of new country introductions.\n\n- **Animation & motion**\n  - As time advances:\n    - When a country reaches its **first confirmed case date**, its node **pulses** from inactive gray to active green and stays lit thereafter.\n    - One or more **flow arcs animate outward** from source to destination with a moving highlight dot indicating direction.\n    - Arc thickness reflects **early importation strength** (relative scale) and can fade after a short duration to reduce clutter.\n  - Major seeding events (e.g., Europe → US early 2020) can be emphasized with a **temporary orange highlight** and a short annotation.\n\n- **What changes when students adjust variables**\n  - **Date range / time** controls which countries are lit and which arcs appear.\n  - **Region highlight** dims non-selected regions and boosts contrast for the selected region’s nodes/arcs.\n  - **Seeding threshold** reduces/expands displayed arcs to show only the most influential early importations.\n  - **Case intensity toggle/scale** changes node glow/size to reflect cumulative cases (optional overlay).\n\n## Simulation Variables\n\n| Name | Label | Min | Max | Default | Unit |\n|---|---|---:|---:|---:|---|\n| time | Current Date (days since start) | 0 | 900 | 120 | days |\n| windowDays | Visible Window (trailing) | 7 | 365 | 60 | days |\n| seedingThreshold | Show Only Stronger Importations | 0 | 100 | 40 | index |\n| regionFocus | Region Focus (0=Global, 1=East Asia, 2=Europe, 3=North America, 4=South America, 5=Africa, 6=Oceania) | 0 | 6 | 0 | category |\n| caseIntensity | Cumulative Case Intensity Overlay | 0 | 1 | 0 | toggle |\n\n## Info Points\n- **Label:** FIRST CONFIRMED CASE  \n  **Explanation:** The earliest date a country reported a confirmed COVID-19 case; this is when its node first “lights up” on the map.  \n  **Near:** next to a newly activated country node during its pulse moment  \n  **Color:** nodeActive (`#22c55e`)\n\n- **Label:** IMPORTATION (SEEDING)  \n  **Explanation:** Early cases introduced from abroad can start local transmission chains; stronger seeding often comes from higher travel volume and earlier timing.  \n  **Near:** along a prominent arc connecting two countries  \n  **Color:** flowArc (`#38bdf8`)\n\n- **Label:** DIRECTIONAL FLOW ARC  \n  **Explanation:** A visual link from a likely source country to a newly affected country at first detection; direction indicates probable origin of early introductions.  \n  **Near:** on the moving highlight dot traveling along an arc  \n  **Color:** flowArc (`#38bdf8`)\n\n- **Label:** MAJOR SEEDING EVENT  \n  **Explanation:** A period when multiple countries receive early introductions from a common source region, accelerating regional spread (e.g., Europe to North America in early 2020).  \n  **Near:** near the highlighted cluster of arcs during emphasized periods  \n  **Color:** highlight (`#f59e0b`)\n\n- **Label:** CUMULATIVE INTENSITY  \n  **Explanation:** Optional overlay that scales node glow/size by cumulative cases to show how outbreaks grew after introduction (distinct from first-detection timing).  \n  **Near:** next to the legend for node glow/size  \n  **Color:** highlight (`#f59e0b`)\n\n## Scaffolding Steps\n1. **Instruction:** Press Play and watch until the first wave of countries light up outside East Asia.  \n   **Concept:** Spread is time-ordered; the pandemic emerges through sequential introductions across borders.  \n   **Condition:** `time > 60`\n\n2. **Instruction:** Set **Region Focus** to Europe and scrub the timeline through early 2020.  \n   **Concept:** Regional clustering occurs when many introductions happen close in time within connected travel networks.  \n   **Condition:** `regionFocus == 2 && time > 120`\n\n3. **Instruction:** Increase **Show Only Stronger Importations** (threshold) until only the thickest arcs remain.  \n   **Concept:** A small number of high-volume/early connections can account for many initial introductions (core seeding pathways).  \n   **Condition:** `seedingThreshold > 70`\n\n4. **Instruction:** Switch **Region Focus** to North America and find the period when multiple arcs arrive; pause and inspect sources.  \n   **Concept:** Major seeding events can shift dominant sources over time (e.g., different regions contributing to introductions).  \n   **Condition:** `regionFocus == 3 && time > 140`\n\n5. **Instruction:** Turn on **Cumulative Case Intensity Overlay** and compare two countries that lit up around the same date but grew differently.  \n   **Concept:** First detection timing is not the same as outbreak magnitude; local dynamics affect growth after introduction.  \n   **Condition:** `caseIntensity == 1`",
+    "controls": {
+      "title": "COVID-19 SPREAD CONTROLS",
+      "sliders": [
+        {
+          "key": "time",
+          "label": "Current Date (days since start)",
+          "min": 0,
+          "max": 900,
+          "step": 1,
+          "defaultValue": 120,
+          "unit": "days"
+        },
+        {
+          "key": "windowDays",
+          "label": "Visible Window (trailing)",
+          "min": 7,
+          "max": 365,
+          "step": 1,
+          "defaultValue": 60,
+          "unit": "days"
+        },
+        {
+          "key": "seedingThreshold",
+          "label": "Show Only Stronger Importations",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "defaultValue": 40,
+          "unit": "index"
+        },
+        {
+          "key": "regionFocus",
+          "label": "Region Focus (0=Global, 1=East Asia, 2=Europe, 3=North America, 4=South America, 5=Africa, 6=Oceania)",
+          "min": 0,
+          "max": 6,
+          "step": 1,
+          "defaultValue": 0,
+          "unit": "category"
+        },
+        {
+          "key": "caseIntensity",
+          "label": "Cumulative Case Intensity Overlay",
+          "min": 0,
+          "max": 1,
+          "step": 1,
+          "defaultValue": 0,
+          "unit": "toggle"
+        }
+      ],
+      "toggles": [
+        {
+          "key": "isPaused",
+          "label": "Pause",
+          "defaultValue": false
+        }
+      ]
+    },
+    "scaffoldedSteps": [
+      {
+        "instruction": "Press Play and watch until the first wave of countries light up outside East Asia.",
+        "concept": "Spread is time-ordered; the pandemic emerges through sequential introductions across borders.",
+        "condition": "time > 60"
+      },
+      {
+        "instruction": "Set Region Focus to Europe and scrub the timeline through early 2020.",
+        "concept": "Regional clustering occurs when many introductions happen close in time within connected travel networks.",
+        "condition": "regionFocus == 2 && time > 120"
+      },
+      {
+        "instruction": "Increase Show Only Stronger Importations (threshold) until only the thickest arcs remain.",
+        "concept": "A small number of high-volume/early connections can account for many initial introductions (core seeding pathways).",
+        "condition": "seedingThreshold > 70"
+      },
+      {
+        "instruction": "Switch Region Focus to North America and find the period when multiple arcs arrive; pause and inspect sources.",
+        "concept": "Major seeding events can shift dominant sources over time (e.g., different regions contributing to introductions).",
+        "condition": "regionFocus == 3 && time > 140"
+      },
+      {
+        "instruction": "Turn on Cumulative Case Intensity Overlay and compare two countries that lit up around the same date but grew differently.",
+        "concept": "First detection timing is not the same as outbreak magnitude; local dynamics affect growth after introduction.",
+        "condition": "caseIntensity == 1"
+      }
+    ]
+  },
+  "createdAt": 1772257105362,
+  "updatedAt": 1772257105362
+}

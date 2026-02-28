@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import type {
+  FunctionTool,
   ResponseInputItem,
   ResponseFunctionToolCall,
 } from 'openai/resources/responses/responses'
@@ -15,8 +16,20 @@ import {
   executeToolCall,
   formatCodeState,
 } from './viz-edit-utils'
+import { getSceneBoilerplate } from './webgl-boilerplates'
 
 export type { ChecklistItem }
+
+const v5Tools: FunctionTool[] = [...editTools]
+
+function executeToolCallV5(
+  toolName: string,
+  args: Record<string, unknown>,
+  state: { currentCode: string },
+  checklist: ChecklistItem[],
+): string {
+  return executeToolCall(toolName, args, state, checklist, '[v5]')
+}
 
 // ---------------------------------------------------------------------------
 // Main export — multi-turn conversation using OpenAI Responses API
@@ -29,6 +42,7 @@ export async function generateVisualizationCodeV5(args: {
   renderType: RenderType
   userPrompt: string
   runtimePanels?: boolean
+  boilerplateKey?: string | null
 }): Promise<
   | { ok: true; code: string; checklist: ChecklistItem[] }
   | { ok: false; error: VisualizationValidationError }
@@ -43,7 +57,12 @@ export async function generateVisualizationCodeV5(args: {
 
   console.log('[v4] starting with checklist:', checklist.map((i) => i.id))
 
-  const state = { currentCode: '' }
+  // Pre-populate code with the boilerplate template chosen by the blueprint LLM (if any)
+  const matched = args.boilerplateKey ? getSceneBoilerplate(args.boilerplateKey, args.renderType) : null
+  const state = { currentCode: matched ? matched.code : '' }
+  if (matched) {
+    console.log(`[v5] pre-populated template: ${matched.key} (${matched.code.split('\n').length} lines)`)
+  }
   const renderRules = getRenderTypeRules(args.renderType).join('\n')
 
   // ---- System instructions (sent once, cached by OpenAI) ----
@@ -79,6 +98,7 @@ export async function generateVisualizationCodeV5(args: {
     '',
     '# Task',
     '- Work through uncompleted checklist items in order using find_and_replace.',
+    '- The code may already contain a pre-populated template that matches the user request. If so, adapt and customize it with find_and_replace to match the blueprint.',
     '- After fully implementing each item, call markChecklistItemDone with its id.',
     '- When all checklist items are done, stop making tool calls.',
     '',
@@ -123,10 +143,20 @@ export async function generateVisualizationCodeV5(args: {
     '=== RENDERING ENGINE RULES ===',
     renderRules,
     '=== END RENDERING ENGINE RULES ===',
+    '',
+    ...(matched
+      ? [
+          '',
+          `NOTE: The code has been pre-populated with the "${matched.key}" template (${matched.name}).`,
+          'Adapt this template to match the blueprint — customize colors, labels, info points, animations, and structure as needed using find_and_replace.',
+        ]
+      : []),
   ].join('\n')
 
   // ---- Initial user message ----
   const { label: codeLabel, content: codeContent } = formatCodeState(state.currentCode)
+
+  console.log('[v5] initial input test :', JSON.stringify(state.currentCode, null, 2))
 
   const initialInput: ResponseInputItem[] = [
     {
@@ -183,7 +213,7 @@ export async function generateVisualizationCodeV5(args: {
         model: 'gpt-5.3-codex',
         instructions,
         input: nextInput,
-        tools: editTools,
+        tools: v5Tools,
         parallel_tool_calls: false,
         reasoning: { effort: 'medium' },
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
@@ -264,8 +294,8 @@ export async function generateVisualizationCodeV5(args: {
 
       for (const fc of functionCalls) {
         const toolArgs = JSON.parse(fc.arguments) as Record<string, unknown>
-        const output = executeToolCall(fc.name, toolArgs, state, checklist, '[v4]')
-        console.log(`[v4] ${fc.name}: ${output.substring(0, 200)}`)
+        const output = executeToolCallV5(fc.name, toolArgs, state, checklist)
+        console.log(`[v5] ${fc.name}: ${output.substring(0, 200)}`)
 
         toolResults.push({
           type: 'function_call_output',
@@ -346,7 +376,7 @@ export async function generateVisualizationCodeV5(args: {
         model: 'gpt-5.3-codex',
         instructions,
         input: repairInput,
-        tools: editTools,
+        tools: v5Tools,
         parallel_tool_calls: false,
         reasoning: { effort: 'high' },
       })
@@ -359,8 +389,8 @@ export async function generateVisualizationCodeV5(args: {
 
       for (const fc of repairCalls) {
         const toolArgs = JSON.parse(fc.arguments) as Record<string, unknown>
-        const output = executeToolCall(fc.name, toolArgs, state, checklist, '[v4]')
-        console.log(`[v4] repair ${fc.name}: ${output.substring(0, 200)}`)
+        const output = executeToolCallV5(fc.name, toolArgs, state, checklist)
+        console.log(`[v5] repair ${fc.name}: ${output.substring(0, 200)}`)
       }
     }
   } catch (error) {
@@ -377,6 +407,7 @@ export async function generateVisualizationCodeV5(args: {
   console.log(`[v4] total code generation time: ${Date.now() - startTime}ms`)
 
   const completed = checklist.filter((i) => i.done).length
+  console.log('[v5] final code test :', JSON.stringify(state.currentCode, null, 2))
   console.log(`[v4] finished: ${completed}/${checklist.length} items completed`)
 
   return { ok: true, code: state.currentCode, checklist }
