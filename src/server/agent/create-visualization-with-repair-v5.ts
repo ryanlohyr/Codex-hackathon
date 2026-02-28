@@ -22,7 +22,7 @@ export type { ChecklistItem }
 // Main export — multi-turn conversation using OpenAI Responses API
 // ---------------------------------------------------------------------------
 
-export async function generateVisualizationCodeV4(args: {
+export async function generateVisualizationCodeV5(args: {
   openaiClient: OpenAI
   blueprint: string
   checklist: ChecklistItem[]
@@ -72,33 +72,44 @@ export async function generateVisualizationCodeV4(args: {
       ].join('\n')
 
   const instructions = [
-    'You are a code-generation agent. You receive a checklist and current code state.',
-    'Use find_and_replace to write and edit code. Work through uncompleted checklist items in order.',
-    'After fully implementing a checklist item, call markChecklistItemDone with its id.',
-    'Do NOT explain, narrate, or send text-only responses. Just make tool calls.',
-    'When all checklist items are done, stop making tool calls.',
+    'You are an autonomous code-generation agent. You receive a checklist and current code state.',
     '',
-    'CRITICAL RULES (violations crash the app):',
+    '# Task',
+    '- Work through uncompleted checklist items in order using find_and_replace.',
+    '- After fully implementing each item, call markChecklistItemDone with its id.',
+    '- When all checklist items are done, stop making tool calls.',
     '',
-    'THREE IS NOT AVAILABLE:',
+    '# Autonomy and Persistence',
+    '- Persist until ALL checklist items are fully implemented end-to-end. Do not stop at partial fixes or analysis.',
+    '- Bias to action: implement with reasonable assumptions. Never end a turn without making progress.',
+    '- If a find_and_replace fails, use view_range or search_code to inspect actual code, then retry with corrected old_string.',
+    '- Avoid excessive looping on the same region without progress — re-read the code and plan the full change before retrying.',
+    '',
+    '# Efficient Edits',
+    '- ALWAYS inspect code with view_range or search_code before calling find_and_replace when in skeleton mode.',
+    '- Your find_and_replace old_string must match the ACTUAL code, not the skeleton.',
+    '- Batch related changes into one find_and_replace with enough surrounding context to make the match unique.',
+    '- Avoid repeated micro-edits to the same region — plan the complete change and apply it in one pass.',
+    '',
+    '# Critical Rules (violations crash the app)',
+    '',
+    '## THREE IS NOT AVAILABLE',
     '- NEVER use THREE.Vector3, THREE.Color, THREE.Euler, new THREE.anything.',
     '- For vectors, use plain arrays: [x, y, z]. For colors, use hex strings.',
     '- Only these variables are in scope: React, runtimeState, helpers.',
     '',
-    'REACT ELEMENT RULES:',
+    '## React Element Rules',
     '- Every React.createElement() call MUST have a valid first argument: string tag or component.',
     '- NEVER write React.createElement( React.createElement(...) ).',
     '- All new elements MUST be children INSIDE the existing React.createElement(React.Fragment, null, ...).',
     '- ScreenOverlay and InfoPoint are COMPONENTS from helpers.',
     '',
-    'CODE VIEWING:',
+    '## Code Viewing',
     '- When code is short, you see full code. When longer, you see a SKELETON with [line] ranges.',
     '- The skeleton includes insertion hints (last lines before the Fragment close).',
     '- Use view_range (max 80 lines) to inspect ONLY the section you plan to edit.',
     '- Use search_code to find specific patterns instead of scanning large ranges.',
     '- Do NOT view the entire file in chunks — the skeleton shows the structure.',
-    '- ALWAYS inspect the actual code before calling find_and_replace when in skeleton mode.',
-    '- Your find_and_replace old_string must match the ACTUAL code, not the skeleton.',
     '',
     codeStructureGuide,
     '',
@@ -149,6 +160,8 @@ export async function generateVisualizationCodeV4(args: {
 
   console.log('[v4] instructions length:', instructions.length)
 
+  console.log('[v4] instructions test :', instructions)
+
   try {
     while (iteration < MAX_ITERATIONS) {
       iteration++
@@ -164,10 +177,11 @@ export async function generateVisualizationCodeV4(args: {
       )
 
       const response = await args.openaiClient.responses.create({
-        model: 'gpt-5.2',
+        model: 'gpt-5.3-codex',
         instructions,
         input: nextInput,
         tools: editTools,
+        parallel_tool_calls: false,
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       })
 
@@ -300,10 +314,11 @@ export async function generateVisualizationCodeV4(args: {
       ]
 
       const repairResponse = await args.openaiClient.responses.create({
-        model: 'gpt-5.2',
+        model: 'gpt-5.3-codex',
         instructions,
         input: repairInput,
         tools: editTools,
+        parallel_tool_calls: false,
       })
 
       const repairCalls = repairResponse.output.filter(

@@ -1,14 +1,17 @@
 import type { createOpenAI } from '@ai-sdk/openai'
 import OpenAI from 'openai'
 import { streamText, tool } from 'ai'
+import fs from 'fs'
 import { z } from 'zod'
 import { generateChecklist, generateVisualizationMetadata } from './create-visualization-with-repair'
 import { generateVisualizationCodeV4 } from './create-visualization-with-repair-v4'
+import { generateVisualizationCodeV5 } from './create-visualization-with-repair-v5'
 import { generateBlueprint } from './generate-blueprint'
 import { classifyRenderType } from './classify-render-type'
 import { CHAT_ONLY_SYSTEM_PROMPT } from './prompts'
 import type { AgentAction, AgentSSEEvent, AgentStreamRequest } from '../../types/agent'
 import type { VisualizationConfig } from '../../types/visualization'
+
 
 
 export async function runGraphFlow(args: {
@@ -65,49 +68,49 @@ If the user is only asking a question, answer conversationally without tools.`,
     // Step 1: Classify render type so the blueprint can target the correct mode
     const renderType = await classifyRenderType({ openai, prompt: toolPrompt })
 
-    // // Step 2: Generate combined blueprint (educational design + technical plan + render rules)
-    const blueprintResult = await generateBlueprint({
-      openai,
-      userPrompt: toolPrompt,
-      context: request.context,
-      renderType,
-    })
+    // // // Step 2: Generate combined blueprint (educational design + technical plan + render rules)
+    // const blueprintResult = await generateBlueprint({
+    //   openai,
+    //   userPrompt: toolPrompt,
+    //   context: request.context,
+    //   renderType,
+    // })
 
-    if (!blueprintResult.ok) {
-      console.warn('[runGraphFlow] blueprint generation failed', blueprintResult.error)
-      emit({
-        type: 'tool_error',
-        callId,
-        error: {
-          attempts: [],
-          finalError: { phase: 'schema', message: 'Blueprint generation failed.' },
-          suggestions: ['Try rephrasing your request.'],
-        },
-      })
-      assistantMessage =
-        assistantMessage.trim() || 'Blueprint generation failed. Please try rephrasing your request.'
-      continue
-    }
+    // if (!blueprintResult.ok) {
+    //   console.warn('[runGraphFlow] blueprint generation failed', blueprintResult.error)
+    //   emit({
+    //     type: 'tool_error',
+    //     callId,
+    //     error: {
+    //       attempts: [],
+    //       finalError: { phase: 'schema', message: 'Blueprint generation failed.' },
+    //       suggestions: ['Try rephrasing your request.'],
+    //     },
+    //   })
+    //   assistantMessage =
+    //     assistantMessage.trim() || 'Blueprint generation failed. Please try rephrasing your request.'
+    //   continue
+    // }
 
-    const blueprint = blueprintResult.blueprint
-    emit({ type: 'blueprint_ready', callId, blueprint })
+    // const blueprint = blueprintResult.blueprint
+    // emit({ type: 'blueprint_ready', callId, blueprint })
 
-    emit({
-      type: 'tool_call',
-      toolName: 'create_visualization',
-      callId,
-      args: { prompt: toolPrompt },
-    })
+    // emit({
+    //   type: 'tool_call',
+    //   toolName: 'create_visualization',
+    //   callId,
+    //   args: { prompt: toolPrompt },
+    // })
 
-    // Step 3: Generate checklist + metadata in parallel from the blueprint
-    const [checklist, metadata] = await Promise.all([
-      generateChecklist({ openai, blueprint, renderType }),
-      generateVisualizationMetadata({ openai, blueprint, userPrompt: toolPrompt }),
-    ])
+    // // Step 3: Generate checklist + metadata in parallel from the blueprint
+    // const [checklist, metadata] = await Promise.all([
+    //   generateChecklist({ openai, blueprint, renderType }),
+    //   generateVisualizationMetadata({ openai, blueprint, userPrompt: toolPrompt }),
+    // ])
 
-    // const blueprint = fs.readFileSync('blueprint.txt', 'utf8')
-    // const checklist = JSON.parse(fs.readFileSync('checklist.json', 'utf8'))
-    // const metadata = JSON.parse(fs.readFileSync('metadata.json', 'utf8'))
+    const blueprint = fs.readFileSync('blueprint.txt', 'utf8')
+    const checklist = JSON.parse(fs.readFileSync('checklist.json', 'utf8'))
+    const metadata = JSON.parse(fs.readFileSync('metadata.json', 'utf8'))
 
     // fs.writeFileSync('checklist.json', JSON.stringify(checklist, null, 2))
     // fs.writeFileSync('blueprint.txt', blueprint)
@@ -115,7 +118,7 @@ If the user is only asking a question, answer conversationally without tools.`,
 
     // Step 4: Generate visualization code iteratively using the checklist
     const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    const codeResult = await generateVisualizationCodeV4({
+    const codeResult = await generateVisualizationCodeV5({
       openaiClient,
       blueprint,
       checklist,
