@@ -79,13 +79,12 @@ export async function generateVisualizationCodeV5(args: {
     '- Work through uncompleted checklist items in order using find_and_replace.',
     '- After fully implementing each item, call markChecklistItemDone with its id.',
     '- When all checklist items are done, stop making tool calls.',
-    '- IMPORTANT: Every response MUST include at least one tool call (find_and_replace, view_range, search_code, or markChecklistItemDone). Do not end a turn without making progress via tools.',
     '',
     '# Autonomy and Persistence',
-    '- Persist until ALL checklist items are fully implemented end-to-end. Do not stop at partial fixes or analysis.',
-    '- Bias to action: implement with reasonable assumptions. Never end a turn without making progress.',
+    '- Persist until ALL checklist items are fully implemented end-to-end within the current turn: do not stop at analysis or partial fixes; carry changes through implementation and verification.',
+    '- Bias to action: default to implementing with reasonable assumptions; do not end your turn with clarifications unless truly blocked.',
     '- If a find_and_replace fails, use view_range or search_code to inspect actual code, then retry with corrected old_string.',
-    '- Avoid excessive looping on the same region without progress — re-read the code and plan the full change before retrying.',
+    '- Avoid excessive looping or repetition; if you find yourself re-reading or re-editing the same files without clear progress, re-read the code and plan the full change before retrying.',
     '',
     '# Efficient Edits',
     '- ALWAYS inspect code with view_range or search_code before calling find_and_replace when in skeleton mode.',
@@ -184,7 +183,7 @@ export async function generateVisualizationCodeV5(args: {
         input: nextInput,
         tools: editTools,
         parallel_tool_calls: false,
-        // reasoning: { effort: 'high' },
+        reasoning: { effort: 'medium' },
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       })
 
@@ -199,11 +198,14 @@ export async function generateVisualizationCodeV5(args: {
       )
 
       if (functionCalls.length === 0) {
-        // Check if the model sent commentary/preamble text (normal for Codex)
-        const hasTextOutput = response.output.some((o) => o.type === 'message')
-        consecutiveNoToolCalls++
+        // Detect phase on assistant message items (gpt-5.3-codex feature).
+        // phase: "commentary" = normal preamble/thinking (model will follow up with tool calls)
+        // phase: "final_answer" = model thinks it's done
+        const messageItems = response.output.filter((o) => o.type === 'message')
+        const phase = (messageItems[0] as any)?.phase as string | null | undefined
+
         console.log(
-          `[v4] no tool calls (consecutive: ${consecutiveNoToolCalls}, hasText: ${hasTextOutput}: response.output: ${JSON.stringify(response.output, null, 2)})`,
+          `[v4] no tool calls — phase: ${phase}, output: ${JSON.stringify(response.output, null, 2)}`,
         )
 
         if (checklist.every((i) => i.done)) {
@@ -211,37 +213,43 @@ export async function generateVisualizationCodeV5(args: {
           break
         }
 
-        if (consecutiveNoToolCalls >= 5) {
-          console.warn('[v4] giving up — no tool calls in 5 consecutive rounds')
+        // Commentary phase is normal preamble behavior for gpt-5.3-codex.
+        // The model is thinking/planning before making tool calls.
+        // Don't count it against consecutiveNoToolCalls — just continue.
+        if (phase === 'commentary') {
+          console.log('[v4] commentary phase (preamble) — continuing normally')
+          nextInput = [{ role: 'user' as const, content: 'Continue.' }]
+          continue
+        }
+
+        // final_answer or null phase with no tool calls — model thinks it's done
+        consecutiveNoToolCalls++
+        console.log(`[v4] non-commentary no-tool-call (consecutive: ${consecutiveNoToolCalls})`)
+
+        if (consecutiveNoToolCalls >= 3) {
+          console.warn('[v4] giving up — no tool calls in 3 consecutive non-commentary rounds')
           break
         }
 
         const pending = checklist.filter((i) => !i.done)
+        const { label, content } = formatCodeState(state.currentCode)
 
-        // First 1-2 no-tool-call turns: gentle continuation (Codex emits
-        // preamble/commentary before tool batches — this is expected behavior).
-        if (consecutiveNoToolCalls <= 2) {
-          console.log(`[v4] gentle continuation nudge`)
-          nextInput = [
-            {
-              role: 'user',
-              content: `Continue. Next item to implement: \`${pending[0].id}\` — ${pending[0].description}. Use find_and_replace.`,
-            },
-          ]
-        } else {
-          // Stronger nudge with full context after multiple misses
-          nextInput = [
-            {
-              role: 'user',
-              content: [
-                'Pending checklist items:',
-                ...pending.map((i) => `- \`${i.id}\`: ${i.description}`),
-                '',
-                'Implement the next item now using find_and_replace. Call markChecklistItemDone when done.',
-              ].join('\n'),
-            },
-          ]
-        }
+        // Send a focused redirect with full context — the model lost track
+        nextInput = [
+          {
+            role: 'user' as const,
+            content: [
+              `There are ${pending.length} uncompleted checklist items remaining:`,
+              ...pending.map((i) => `- \`${i.id}\`: ${i.description}`),
+              '',
+              `=== ${label} ===`,
+              content,
+              `=== END ${label} ===`,
+              '',
+              'Continue implementing the next uncompleted item using find_and_replace. Call markChecklistItemDone when done.',
+            ].join('\n'),
+          },
+        ]
         continue
       }
 
