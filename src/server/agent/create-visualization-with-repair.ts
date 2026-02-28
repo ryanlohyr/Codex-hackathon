@@ -28,7 +28,7 @@ const sliderDefSchema = z
     max: z.number(),
     step: z.number(),
     defaultValue: z.number(),
-    unit: z.string().optional().describe('Optional measurement unit.'),
+    unit: z.union([z.string(), z.null()]).describe('Measurement unit string or null when not applicable.'),
   })
   .strict()
 
@@ -116,7 +116,12 @@ export async function generateVisualizationMetadata(args: {
     title: object.title,
     summary: object.summary,
     params: Object.fromEntries(object.params.map((p) => [p.key, p.value])),
-    controls: object.controls as VisualizationControls,
+    controls: {
+      ...object.controls,
+      sliders: object.controls.sliders.map((slider) =>
+        slider.unit == null ? { ...slider, unit: undefined } : slider,
+      ),
+    } as VisualizationControls,
     scaffoldedSteps: object.scaffoldedSteps as ScaffoldStep[],
   }
 }
