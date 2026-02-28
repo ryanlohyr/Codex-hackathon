@@ -82,6 +82,7 @@ export async function generateVisualizationMetadata(args: {
   openai: ReturnType<typeof createOpenAI>
   blueprint: string
   userPrompt: string
+  abortSignal?: AbortSignal
 }): Promise<{
   type: 'solar-system' | 'molecule' | 'terrain' | 'concept-map'
   theme: 'light' | 'dark'
@@ -108,6 +109,7 @@ export async function generateVisualizationMetadata(args: {
       'control panel definition (sliders from Simulation Variables, toggles including isPaused),',
       'and scaffolded steps from the blueprint.',
     ].join('\n'),
+    abortSignal: args.abortSignal,
   })
 
   return {
@@ -153,6 +155,7 @@ export async function generateChecklist(args: {
   openai: ReturnType<typeof createOpenAI>
   blueprint: string
   renderType: RenderType
+  abortSignal?: AbortSignal
 }): Promise<ChecklistItem[]> {
   const renderRules = getRenderTypeRules(args.renderType).join('\n')
 
@@ -192,6 +195,7 @@ export async function generateChecklist(args: {
       args.blueprint,
       '=== END BLUEPRINT ===',
     ].join('\n'),
+    abortSignal: args.abortSignal,
   })
 
   console.log('[generateChecklist] produced items:', object.items.map((i) => i.id))
@@ -336,32 +340,32 @@ export async function generateVisualizationCode(args: {
   const is3D = args.renderType === '3D_WEBGL'
   const codeStructureGuide = is3D
     ? [
-        'CODE STRUCTURE (3D_WEBGL):',
-        'The code runs inside a function body with React, runtimeState, and helpers already in scope.',
-        'ONLY React, runtimeState, and helpers are available. THREE is NOT in scope — never use THREE.Vector3, THREE.Color, etc.',
-        'Use R3F string tags ("mesh", "sphereGeometry", "meshStandardMaterial", "pointLight", "group", etc.) with React.createElement.',
-        'You must define an inner Scene function and return it:',
-        '',
-        '  function Scene() {',
-        '    const { useFrame, ScreenOverlay, InfoPoint } = helpers;',
-        '    // state, refs, effects here',
-        '    return React.createElement(React.Fragment, null,',
-        '      // ALL visual elements: meshes, lines, lights, InfoPoints',
-        '      // ScreenOverlay with ACTUAL slider/button controls (not placeholder text)',
-        '    );',
-        '  }',
-        '  return Scene;',
-        '',
-        'The return statement is the MOST IMPORTANT part — it must contain ALL rendered elements.',
-        'Every mesh, every InfoPoint, every slider, every panel must be in the JSX tree.',
-        'State and helper functions are useless if nothing is rendered.',
-      ].join('\n')
+      'CODE STRUCTURE (3D_WEBGL):',
+      'The code runs inside a function body with React, runtimeState, and helpers already in scope.',
+      'ONLY React, runtimeState, and helpers are available. THREE is NOT in scope — never use THREE.Vector3, THREE.Color, etc.',
+      'Use R3F string tags ("mesh", "sphereGeometry", "meshStandardMaterial", "pointLight", "group", etc.) with React.createElement.',
+      'You must define an inner Scene function and return it:',
+      '',
+      '  function Scene() {',
+      '    const { useFrame, ScreenOverlay, InfoPoint } = helpers;',
+      '    // state, refs, effects here',
+      '    return React.createElement(React.Fragment, null,',
+      '      // ALL visual elements: meshes, lines, lights, InfoPoints',
+      '      // ScreenOverlay with ACTUAL slider/button controls (not placeholder text)',
+      '    );',
+      '  }',
+      '  return Scene;',
+      '',
+      'The return statement is the MOST IMPORTANT part — it must contain ALL rendered elements.',
+      'Every mesh, every InfoPoint, every slider, every panel must be in the JSX tree.',
+      'State and helper functions are useless if nothing is rendered.',
+    ].join('\n')
     : [
-        'CODE STRUCTURE (2D_CANVAS):',
-        'The code runs inside a function body with ctx, canvas, runtimeState, and helpers already in scope.',
-        'Draw everything using ctx (fillRect, arc, lineTo, fillText, etc.).',
-        'The function is called every frame — draw the full scene each time.',
-      ].join('\n')
+      'CODE STRUCTURE (2D_CANVAS):',
+      'The code runs inside a function body with ctx, canvas, runtimeState, and helpers already in scope.',
+      'Draw everything using ctx (fillRect, arc, lineTo, fillText, etc.).',
+      'The function is called every frame — draw the full scene each time.',
+    ].join('\n')
 
   // Reference material included in every call
   const referenceBlock = [

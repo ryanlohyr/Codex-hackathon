@@ -1,5 +1,5 @@
 import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
-import { ChatWidget } from '../components/chat/ChatWidget'
+import { VoiceAgentWidget } from '../components/chat/VoiceAgentWidget'
 import { useAppStore } from '../store/useAppStore'
 import appCss from '../styles/app.css?url'
 
@@ -32,7 +32,7 @@ function RootDocument() {
           className="h-screen w-screen overflow-hidden"
         >
           <Outlet />
-          <ChatWidget />
+          <VoiceAgentWidget />
         </main>
         <Scripts />
       </body>
@@ -52,3 +52,4 @@ export const Route = createRootRoute({
   component: RootDocument,
   notFoundComponent: NotFoundPage,
 })
+

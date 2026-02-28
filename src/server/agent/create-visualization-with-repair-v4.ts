@@ -18,7 +18,7 @@ import {
 } from './viz-edit-utils'
 import { formatBoilerplatesForPrompt, getSceneBoilerplate } from './webgl-boilerplates'
 
-export type { ChecklistItem }
+
 
 const insertBoilerplateTool: FunctionTool = {
   type: 'function',
@@ -104,7 +104,7 @@ export async function generateVisualizationCodeV4(args: {
   checklist: ChecklistItem[]
   renderType: RenderType
   userPrompt: string
-  runtimePanels?: boolean
+  abortSignal?: AbortSignal
 }): Promise<
   | { ok: true; code: string; checklist: ChecklistItem[] }
   | { ok: false; error: VisualizationValidationError }
@@ -129,29 +129,29 @@ export async function generateVisualizationCodeV4(args: {
   const is3D = args.renderType === '3D_WEBGL'
   const codeStructureGuide = is3D
     ? [
-        'CODE STRUCTURE (3D_WEBGL):',
-        'The code runs inside a function body with React, runtimeState, and helpers already in scope.',
-        'ONLY React, runtimeState, and helpers are available. THREE is NOT in scope.',
-        'Use R3F string tags ("mesh", "sphereGeometry", "meshStandardMaterial", etc.) with React.createElement.',
-        'Define an inner Scene function and return it:',
-        '',
-        '  function Scene() {',
-        '    const { useFrame, ScreenOverlay, InfoPoint } = helpers;',
-        '    // state, refs, effects here',
-        '    return React.createElement(React.Fragment, null,',
-        '      // ALL visual elements',
-        '    );',
-        '  }',
-        '  return Scene;',
-        '',
-        'The return statement is the MOST IMPORTANT part — it must contain ALL rendered elements.',
-      ].join('\n')
+      'CODE STRUCTURE (3D_WEBGL):',
+      'The code runs inside a function body with React, runtimeState, and helpers already in scope.',
+      'ONLY React, runtimeState, and helpers are available. THREE is NOT in scope.',
+      'Use R3F string tags ("mesh", "sphereGeometry", "meshStandardMaterial", etc.) with React.createElement.',
+      'Define an inner Scene function and return it:',
+      '',
+      '  function Scene() {',
+      '    const { useFrame, ScreenOverlay, InfoPoint } = helpers;',
+      '    // state, refs, effects here',
+      '    return React.createElement(React.Fragment, null,',
+      '      // ALL visual elements',
+      '    );',
+      '  }',
+      '  return Scene;',
+      '',
+      'The return statement is the MOST IMPORTANT part — it must contain ALL rendered elements.',
+    ].join('\n')
     : [
-        'CODE STRUCTURE (2D_CANVAS):',
-        'The code runs inside a function body with ctx, canvas, runtimeState, and helpers already in scope.',
-        'Draw everything using ctx (fillRect, arc, lineTo, fillText, etc.).',
-        'The function is called every frame — draw the full scene each time.',
-      ].join('\n')
+      'CODE STRUCTURE (2D_CANVAS):',
+      'The code runs inside a function body with ctx, canvas, runtimeState, and helpers already in scope.',
+      'Draw everything using ctx (fillRect, arc, lineTo, fillText, etc.).',
+      'The function is called every frame — draw the full scene each time.',
+    ].join('\n')
 
   const instructions = [
     'You are a code-generation agent. You receive a checklist and current code state.',
@@ -198,10 +198,10 @@ export async function generateVisualizationCodeV4(args: {
     `=== END AVAILABLE BOILERPLATES ===`,
     ...(recommendedBoilerplate
       ? [
-          '',
-          `Recommended for this prompt: ${recommendedBoilerplate}`,
-          'If you use it, call insert_boilerplate with mode "replace_if_empty" before other edits.',
-        ]
+        '',
+        `Recommended for this prompt: ${recommendedBoilerplate}`,
+        'If you use it, call insert_boilerplate with mode "replace_if_empty" before other edits.',
+      ]
       : []),
   ].join('\n')
 
@@ -247,6 +247,12 @@ export async function generateVisualizationCodeV4(args: {
     while (iteration < MAX_ITERATIONS) {
       iteration++
 
+      // Check abort signal before each expensive API call
+      if (args.abortSignal?.aborted) {
+        console.log(`[v4] ⚡ Abort signal detected at iteration ${iteration} — stopping code generation`)
+        return { ok: false, error: { phase: 'schema', message: 'Generation aborted (user disconnected).' } }
+      }
+
       const allDone = checklist.every((i) => i.done)
       if (allDone) {
         console.log('[v4] all checklist items done')
@@ -257,13 +263,16 @@ export async function generateVisualizationCodeV4(args: {
         `[v4] iteration ${iteration}, pending: ${checklist.filter((i) => !i.done).map((i) => i.id).join(', ')}`,
       )
 
-      const response = await args.openaiClient.responses.create({
-        model: 'gpt-5.2',
-        instructions,
-        input: nextInput,
-        tools: v4Tools,
-        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-      })
+      const response = await args.openaiClient.responses.create(
+        {
+          model: 'gpt-5.2',
+          instructions,
+          input: nextInput,
+          tools: v4Tools,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+        },
+        { signal: args.abortSignal }
+      )
 
       previousResponseId = response.id
 
@@ -359,7 +368,7 @@ export async function generateVisualizationCodeV4(args: {
     console.log('[v4] starting validation phase')
 
     for (let attempt = 1; attempt <= maxValidationAttempts; attempt++) {
-      const validation = validateGeneratedSceneCode(state.currentCode, args.renderType, { runtimePanels: args.runtimePanels })
+      const validation = validateGeneratedSceneCode(state.currentCode, args.renderType)
       if (validation.ok) {
         console.log('[v4] validation passed')
         break
@@ -393,12 +402,15 @@ export async function generateVisualizationCodeV4(args: {
         },
       ]
 
-      const repairResponse = await args.openaiClient.responses.create({
-        model: 'gpt-5.2',
-        instructions,
-        input: repairInput,
-        tools: v4Tools,
-      })
+      const repairResponse = await args.openaiClient.responses.create(
+        {
+          model: 'gpt-5.2',
+          instructions,
+          input: repairInput,
+          tools: v4Tools,
+        },
+        { signal: args.abortSignal }
+      )
 
       const repairCalls = repairResponse.output.filter(
         (o): o is ResponseFunctionToolCall => o.type === 'function_call',
@@ -413,11 +425,15 @@ export async function generateVisualizationCodeV4(args: {
       }
     }
   } catch (error) {
+    if (args.abortSignal?.aborted || (error as DOMException).name === 'AbortError') {
+      console.log('[v4] ⚡ Aborted during openaiClient.responses.create HTTP call')
+      return { ok: false, error: { phase: 'schema', message: 'Generation aborted by user.' } }
+    }
     console.error('[v4] agent run failed', error)
   }
 
   // Final safety validation
-  const finalValidation = validateGeneratedSceneCode(state.currentCode, args.renderType, { runtimePanels: args.runtimePanels })
+  const finalValidation = validateGeneratedSceneCode(state.currentCode, args.renderType)
   if (!finalValidation.ok) {
     console.warn('[v4] final code failed validation', (finalValidation as { ok: false; error: VisualizationValidationError }).error)
     return { ok: false, error: (finalValidation as { ok: false; error: VisualizationValidationError }).error }
