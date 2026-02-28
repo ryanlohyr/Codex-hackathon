@@ -20,8 +20,6 @@ export function VoiceAgentWidget() {
     // Ref mirrors isProcessingTool so onModeChange closure always reads latest value (fixes stale closure bug)
     const isProcessingToolRef = useRef(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
-    // Tracks ElevenLabs listening mode independently of mascotState (which is gated by isProcessingTool)
-    const [isAgentListening, setIsAgentListening] = useState(false)
 
     // Auto-scroll chat to bottom when new messages arrive
     useEffect(() => {
@@ -74,16 +72,13 @@ export function VoiceAgentWidget() {
         onModeChange: (mode: { mode: string }) => {
             console.log('[VoiceAgent] Mode change:', mode)
             if (mode.mode === 'listening') {
-                setIsAgentListening(true)
                 // Read from ref (not state) to avoid stale closure — ref is always current
                 if (!isProcessingToolRef.current) {
                     setMascotState('listening')
                 }
             } else if (mode.mode === 'speaking') {
-                setIsAgentListening(false)
                 setMascotState('speaking')
             } else if (mode.mode === 'thinking') {
-                setIsAgentListening(false)
                 setMascotState('thinking')
                 setIsProcessingTool(true)
                 isProcessingToolRef.current = true
@@ -409,7 +404,7 @@ export function VoiceAgentWidget() {
                         {/* Visualizer fills the bottom half — hidden when idle */}
                         {isConnected && (
                             <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%', zIndex: 0, opacity: 0.6 }}>
-                                <AudioVisualizer isActive={conversation.isSpeaking || isAgentListening} />
+                                <AudioVisualizer isActive={conversation.isSpeaking} />
                             </div>
                         )}
                         {/* Mascot on top */}
