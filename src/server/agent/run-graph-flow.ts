@@ -21,21 +21,22 @@ export async function runGraphFlow(args: {
 }): Promise<{ assistantMessage: string; actions: AgentAction[]; messageStreamed: boolean }> {
   const { openai, request, emit } = args
 
+  console.log('[runGraphFlow] request:', JSON.stringify(request, null, 2))
   const result = streamText({
     model: openai.responses('gpt-5.2'),
     system: `${CHAT_ONLY_SYSTEM_PROMPT}
 
-If the user asks to create/build/generate a new visualization, call the create_visualization tool.
+If the user asks to create/build/generate a new visualization, ask exactly ONE brief clarifying question before calling the create_visualization tool. Keep it short and direct. Once the user answers, immediately call the tool — do not ask any more questions.
 If the user is only asking a question, answer conversationally without tools.`,
     messages: [
-      {
-        role: 'user',
-        content: `User prompt: ${request.prompt}\n\nContext:\n${JSON.stringify(request.context)}`,
-      },
+      ...request.context.recentMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+      })),
     ],
     providerOptions: {
       openai: {
-        reasoningEffort: 'medium',
+        reasoningEffort: 'low',
       },
     },
     tools: {
@@ -69,48 +70,48 @@ If the user is only asking a question, answer conversationally without tools.`,
     const renderType = await classifyRenderType({ openai, prompt: toolPrompt })
 
     // // // Step 2: Generate combined blueprint (educational design + technical plan + render rules)
-    // const blueprintResult = await generateBlueprint({
-    //   openai,
-    //   userPrompt: toolPrompt,
-    //   context: request.context,
-    //   renderType,
-    // })
+    const blueprintResult = await generateBlueprint({
+      openai,
+      userPrompt: toolPrompt,
+      context: request.context,
+      renderType,
+    })
 
-    // if (!blueprintResult.ok) {
-    //   console.warn('[runGraphFlow] blueprint generation failed', blueprintResult.error)
-    //   emit({
-    //     type: 'tool_error',
-    //     callId,
-    //     error: {
-    //       attempts: [],
-    //       finalError: { phase: 'schema', message: 'Blueprint generation failed.' },
-    //       suggestions: ['Try rephrasing your request.'],
-    //     },
-    //   })
-    //   assistantMessage =
-    //     assistantMessage.trim() || 'Blueprint generation failed. Please try rephrasing your request.'
-    //   continue
-    // }
+    if (!blueprintResult.ok) {
+      console.warn('[runGraphFlow] blueprint generation failed', blueprintResult.error)
+      emit({
+        type: 'tool_error',
+        callId,
+        error: {
+          attempts: [],
+          finalError: { phase: 'schema', message: 'Blueprint generation failed.' },
+          suggestions: ['Try rephrasing your request.'],
+        },
+      })
+      assistantMessage =
+        assistantMessage.trim() || 'Blueprint generation failed. Please try rephrasing your request.'
+      continue
+    }
 
-    // const blueprint = blueprintResult.blueprint
-    // emit({ type: 'blueprint_ready', callId, blueprint })
+    const blueprint = blueprintResult.blueprint
+    emit({ type: 'blueprint_ready', callId, blueprint })
 
-    // emit({
-    //   type: 'tool_call',
-    //   toolName: 'create_visualization',
-    //   callId,
-    //   args: { prompt: toolPrompt },
-    // })
+    emit({
+      type: 'tool_call',
+      toolName: 'create_visualization',
+      callId,
+      args: { prompt: toolPrompt },
+    })
 
-    // // Step 3: Generate checklist + metadata in parallel from the blueprint
-    // const [checklist, metadata] = await Promise.all([
-    //   generateChecklist({ openai, blueprint, renderType }),
-    //   generateVisualizationMetadata({ openai, blueprint, userPrompt: toolPrompt }),
-    // ])
+    // Step 3: Generate checklist + metadata in parallel from the blueprint
+    const [checklist, metadata] = await Promise.all([
+      generateChecklist({ openai, blueprint, renderType }),
+      generateVisualizationMetadata({ openai, blueprint, userPrompt: toolPrompt }),
+    ])
 
-    const blueprint = fs.readFileSync('blueprint.txt', 'utf8')
-    const checklist = JSON.parse(fs.readFileSync('checklist.json', 'utf8'))
-    const metadata = JSON.parse(fs.readFileSync('metadata.json', 'utf8'))
+    // const blueprint = fs.readFileSync('blueprint.txt', 'utf8')
+    // const checklist = JSON.parse(fs.readFileSync('checklist.json', 'utf8'))
+    // const metadata = JSON.parse(fs.readFileSync('metadata.json', 'utf8'))
 
     // fs.writeFileSync('checklist.json', JSON.stringify(checklist, null, 2))
     // fs.writeFileSync('blueprint.txt', blueprint)
