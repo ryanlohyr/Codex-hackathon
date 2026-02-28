@@ -3,8 +3,9 @@ import { useConversation } from '@elevenlabs/react'
 import { useAppStore } from '~/store/useAppStore'
 import { Mascot } from '~/components/chat/starry/Mascot'
 import { AudioVisualizer } from '~/components/chat/starry/AudioVisualizer'
-import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from 'lucide-react'
+import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Send } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useAI } from '~/hooks/useAI'
 
 type MascotState = 'idle' | 'listening' | 'thinking' | 'speaking'
 
@@ -20,6 +21,9 @@ export function VoiceAgentWidget() {
     // Ref mirrors isProcessingTool so onModeChange closure always reads latest value (fixes stale closure bug)
     const isProcessingToolRef = useRef(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
+    const [textInput, setTextInput] = useState('')
+    const [isSending, setIsSending] = useState(false)
+    const { streamPrompt } = useAI()
 
     // Auto-scroll chat to bottom when new messages arrive
     useEffect(() => {
@@ -171,13 +175,78 @@ export function VoiceAgentWidget() {
     const isDark = theme === 'dark'
     const isConnected = conversation.status === 'connected'
 
+    const handleSendText = useCallback(async () => {
+        const text = textInput.trim()
+        if (!text || isSending) return
+
+        setTextInput('')
+        setTranscript((prev) => [...prev.slice(-8), { role: 'user', text }])
+        setIsSending(true)
+        setMascotState('thinking')
+
+        let assistantText = ''
+
+        try {
+            await streamPrompt({
+                prompt: text,
+                context: {
+                    activeVisualizationId: null,
+                    activeVisualizationConfig: null,
+                    activeRuntimeState: { params: {}, toggles: {}, cues: [] },
+                    recentMessages: transcript.slice(-5).map((m) => ({ role: m.role, content: m.text })),
+                },
+                routeContext: { route: 'graph' },
+                onEvent: (event) => {
+                    if (event.type === 'text_delta' && event.delta) {
+                        assistantText += event.delta
+                        setTranscript((prev) => {
+                            const updated = [...prev]
+                            const lastMsg = updated[updated.length - 1]
+                            if (lastMsg?.role === 'assistant') {
+                                lastMsg.text = assistantText
+                            } else {
+                                updated.push({ role: 'assistant', text: assistantText })
+                            }
+                            return updated.slice(-9)
+                        })
+                    } else if (event.type === 'tool_call') {
+                        setIsProcessingTool(true)
+                        isProcessingToolRef.current = true
+                        setMascotState('speaking')
+                    } else if (event.type === 'blueprint_ready') {
+                        setTranscript((prev) => [...prev.slice(-8), { role: 'assistant', text: 'Lesson plan ready. Generating visualization...' }])
+                    } else if (event.type === 'final' && event.actions) {
+                        setIsProcessingTool(false)
+                        isProcessingToolRef.current = false
+                        for (const action of event.actions) {
+                            if (action.type === 'create_visualization' && action.config) {
+                                addVisualizationNode(action.config)
+                            }
+                        }
+                    }
+                },
+            })
+
+            if (!assistantText) {
+                setTranscript((prev) => [...prev.slice(-8), { role: 'assistant', text: 'Done! Check the canvas.' }])
+            }
+        } catch (error) {
+            console.error('[VoiceAgent] Text send error:', error)
+            setTranscript((prev) => [...prev.slice(-8), { role: 'assistant', text: 'Something went wrong. Please try again.' }])
+        } finally {
+            setIsSending(false)
+            setIsProcessingTool(false)
+            isProcessingToolRef.current = false
+            setMascotState(isConnected ? 'listening' : 'idle')
+        }
+    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt])
+
     // ── Collapsed FAB ──
     if (!isExpanded) {
         return (
             <motion.button
                 onClick={() => {
                     setIsExpanded(true)
-                    if (!isConnected) handleStartConversation()
                 }}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -243,7 +312,7 @@ export function VoiceAgentWidget() {
             {/* ── Floating Chat Bubbles ── */}
             {/* hide scrollbar CSS */}
             <style>{`.voice-chat-bubbles::-webkit-scrollbar { display: none; }`}</style>
-            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 250, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: 'calc(100vh - 290px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
+            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: 'calc(100vh - 350px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
                 <AnimatePresence mode="popLayout">
                     {transcript.map((msg, i) => (
                         <motion.div
@@ -524,6 +593,51 @@ export function VoiceAgentWidget() {
                                 <Phone size={18} />
                             </motion.button>
                         )}
+                    </div>
+
+                    {/* ── Text Input Bar ── */}
+                    <div style={{ padding: '0 12px 12px', display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                            type="text"
+                            value={textInput}
+                            onChange={(e) => setTextInput(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendText() } }}
+                            placeholder="Type a message..."
+                            disabled={isSending}
+                            style={{
+                                flex: 1,
+                                padding: '8px 12px',
+                                borderRadius: 12,
+                                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                                background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                                color: isDark ? '#f8fafc' : '#1e293b',
+                                fontSize: 13,
+                                outline: 'none',
+                                opacity: isSending ? 0.5 : 1,
+                            }}
+                        />
+                        <motion.button
+                            onClick={handleSendText}
+                            whileHover={{ scale: 1.08 }}
+                            whileTap={{ scale: 0.92 }}
+                            disabled={!textInput.trim() || isSending}
+                            style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: '50%',
+                                border: 'none',
+                                cursor: textInput.trim() && !isSending ? 'pointer' : 'default',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: textInput.trim() && !isSending
+                                    ? 'linear-gradient(135deg, #0891b2, #06b6d4)'
+                                    : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                                color: textInput.trim() && !isSending ? '#ffffff' : isDark ? '#475569' : '#94a3b8',
+                            }}
+                        >
+                            <Send size={14} />
+                        </motion.button>
                     </div>
                 </motion.div>
             </AnimatePresence>

@@ -37,7 +37,11 @@ If the user is only asking a question, answer conversationally without tools.`,
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),
-      { role: 'user' as const, content: request.prompt },
+      // Always include the current prompt as the final user message
+      // (handles case where recentMessages is empty or doesn't include it yet)
+      ...(request.context.recentMessages.some((m) => m.role === 'user' && m.content === request.prompt)
+        ? []
+        : [{ role: 'user' as const, content: request.prompt }]),
     ],
     providerOptions: {
       openai: {
