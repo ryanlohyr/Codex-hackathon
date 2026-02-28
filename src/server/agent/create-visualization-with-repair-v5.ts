@@ -39,6 +39,8 @@ export async function generateVisualizationCodeV5(args: {
     return { ok: false, error: { phase: 'schema', message: 'Empty implementation checklist.' } }
   }
 
+  const startTime = Date.now()
+
   console.log('[v4] starting with checklist:', checklist.map((i) => i.id))
 
   const state = { currentCode: '' }
@@ -371,6 +373,8 @@ export async function generateVisualizationCodeV5(args: {
     console.warn('[v4] final code failed validation', (finalValidation as { ok: false; error: VisualizationValidationError }).error)
     return { ok: false, error: (finalValidation as { ok: false; error: VisualizationValidationError }).error }
   }
+
+  console.log(`[v4] total code generation time: ${Date.now() - startTime}ms`)
 
   const completed = checklist.filter((i) => i.done).length
   console.log(`[v4] finished: ${completed}/${checklist.length} items completed`)
