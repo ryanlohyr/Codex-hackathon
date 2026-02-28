@@ -78,6 +78,7 @@ export async function generateVisualizationCodeV5(args: {
     '- Work through uncompleted checklist items in order using find_and_replace.',
     '- After fully implementing each item, call markChecklistItemDone with its id.',
     '- When all checklist items are done, stop making tool calls.',
+    '- IMPORTANT: Every response MUST include at least one tool call (find_and_replace, view_range, search_code, or markChecklistItemDone). Do not end a turn without making progress via tools.',
     '',
     '# Autonomy and Persistence',
     '- Persist until ALL checklist items are fully implemented end-to-end. Do not stop at partial fixes or analysis.',
@@ -182,10 +183,13 @@ export async function generateVisualizationCodeV5(args: {
         input: nextInput,
         tools: editTools,
         parallel_tool_calls: false,
+        reasoning: { effort: 'high' },
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       })
 
       previousResponseId = response.id
+
+      console.log('[v4] response test :', JSON.stringify(response, null, 2))
 
       console.log(`[v4] iteration ${iteration} status: ${response.status}`)
 
@@ -194,9 +198,11 @@ export async function generateVisualizationCodeV5(args: {
       )
 
       if (functionCalls.length === 0) {
+        // Check if the model sent commentary/preamble text (normal for Codex)
+        const hasTextOutput = response.output.some((o) => o.type === 'message')
         consecutiveNoToolCalls++
         console.log(
-          `[v4] no tool calls (consecutive: ${consecutiveNoToolCalls})`,
+          `[v4] no tool calls (consecutive: ${consecutiveNoToolCalls}, hasText: ${hasTextOutput}: response.output: ${JSON.stringify(response.output, null, 2)})`,
         )
 
         if (checklist.every((i) => i.done)) {
@@ -204,25 +210,37 @@ export async function generateVisualizationCodeV5(args: {
           break
         }
 
-        if (consecutiveNoToolCalls >= 3) {
-          console.warn('[v4] giving up — no tool calls in 3 consecutive rounds')
+        if (consecutiveNoToolCalls >= 5) {
+          console.warn('[v4] giving up — no tool calls in 5 consecutive rounds')
           break
         }
 
-        // Nudge the model with a reminder
         const pending = checklist.filter((i) => !i.done)
-        nextInput = [
-          {
-            role: 'user',
-            content: [
-              'You stopped making tool calls but these checklist items are NOT done yet:',
-              ...pending.map((i) => `- \`${i.id}\`: ${i.description}`),
-              '',
-              'Continue implementing them. Use find_and_replace to make edits.',
-              'Call markChecklistItemDone when each item is complete.',
-            ].join('\n'),
-          },
-        ]
+
+        // First 1-2 no-tool-call turns: gentle continuation (Codex emits
+        // preamble/commentary before tool batches — this is expected behavior).
+        if (consecutiveNoToolCalls <= 2) {
+          console.log(`[v4] gentle continuation nudge`)
+          nextInput = [
+            {
+              role: 'user',
+              content: `Continue. Next item to implement: \`${pending[0].id}\` — ${pending[0].description}. Use find_and_replace.`,
+            },
+          ]
+        } else {
+          // Stronger nudge with full context after multiple misses
+          nextInput = [
+            {
+              role: 'user',
+              content: [
+                'Pending checklist items:',
+                ...pending.map((i) => `- \`${i.id}\`: ${i.description}`),
+                '',
+                'Implement the next item now using find_and_replace. Call markChecklistItemDone when done.',
+              ].join('\n'),
+            },
+          ]
+        }
         continue
       }
 
@@ -319,6 +337,7 @@ export async function generateVisualizationCodeV5(args: {
         input: repairInput,
         tools: editTools,
         parallel_tool_calls: false,
+        reasoning: { effort: 'high' },
       })
 
       const repairCalls = repairResponse.output.filter(
