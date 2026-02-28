@@ -1,73 +1,52 @@
-# React + TypeScript + Vite
+# MindCanvas 3D
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AI-powered interactive educational visualization platform with voice-first agent interface.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
+cp .env.example .env
+# Fill in your API keys in .env
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Environment Variables
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Variable | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI API key (GPT-5.2 / GPT-5.3-codex) |
+| `VITE_ELEVENLABS_AGENT_ID` | ElevenLabs Conversational AI Agent ID |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## ElevenLabs Voice Agent Setup
+
+This app uses ElevenLabs Conversational AI with a **Custom LLM** backend. ElevenLabs handles STT/TTS while our backend handles all LLM reasoning and tool calling.
+
+### 1. Expose your local server
+
+```bash
+ngrok http 3000
 ```
+
+Copy the generated `https://xxxx.ngrok-free.app` URL.
+
+### 2. Configure ElevenLabs Dashboard
+
+1. Create an Agent at [elevenlabs.io](https://elevenlabs.io)
+2. Under **LLM settings**, select **Custom LLM**
+3. Set the server URL to: `https://xxxx.ngrok-free.app/api/custom-llm`
+4. Enable **"Custom LLM extra body"**
+5. Copy the **Agent ID** into your `.env` as `VITE_ELEVENLABS_AGENT_ID`
+
+### 3. Run the app
+
+```bash
+pnpm run dev
+```
+
+## Tech Stack
+
+- **Frontend:** React 19, React Three Fiber, ReactFlow, Zustand, Framer Motion
+- **Voice:** ElevenLabs Conversational AI SDK
+- **AI:** OpenAI GPT-5.2 (generation) + GPT-5.3-codex (code editing)
+- **Build:** Vite, TanStack Router/Start, TailwindCSS v4
+

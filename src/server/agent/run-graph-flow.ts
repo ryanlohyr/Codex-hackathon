@@ -1,25 +1,29 @@
 import type { createOpenAI } from '@ai-sdk/openai'
 import OpenAI from 'openai'
 import { streamText, tool } from 'ai'
-import fs from 'fs'
 import { z } from 'zod'
 import { generateVisualizationMetadata } from './create-visualization-with-repair'
-import { generateVisualizationCodeV4 } from './create-visualization-with-repair-v4'
-import { generateVisualizationCodeV5 } from './create-visualization-with-repair-v5'
 import { generateBlueprint } from './generate-blueprint'
+import { generateVisualizationCodeV5 } from './create-visualization-with-repair-v5'
 import { classifyRenderType } from './classify-render-type'
 import { CHAT_ONLY_SYSTEM_PROMPT } from './prompts'
 import type { AgentAction, AgentSSEEvent, AgentStreamRequest } from '../../types/agent'
 import type { VisualizationConfig } from '../../types/visualization'
-import fs from 'fs'
 
+function checkAbort(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    console.log('[runGraphFlow] ⚡ Abort detected — stopping early')
+    throw new DOMException('Aborted', 'AbortError')
+  }
+}
 
 export async function runGraphFlow(args: {
   openai: ReturnType<typeof createOpenAI>
   request: AgentStreamRequest
   emit: (event: AgentSSEEvent) => void
+  abortSignal?: AbortSignal
 }): Promise<{ assistantMessage: string; actions: AgentAction[]; messageStreamed: boolean }> {
-  const { openai, request, emit } = args
+  const { openai, request, emit, abortSignal } = args
 
   console.log('[runGraphFlow] request:', JSON.stringify(request, null, 2))
   const result = streamText({
@@ -40,6 +44,7 @@ If the user is only asking a question, answer conversationally without tools.`,
         reasoningEffort: 'low',
       },
     },
+    abortSignal,
     tools: {
       create_visualization: tool({
         description: 'Create a new visualization from the user prompt. Only describe the subject/concept — never specify the rendering medium (2D, 3D, etc.).',
@@ -47,14 +52,17 @@ If the user is only asking a question, answer conversationally without tools.`,
           prompt: z.string().describe('What the user wants to visualize (subject, concept, or data). Do NOT include rendering medium like "3D", "2D", "WebGL", or "canvas".'),
         }),
       }),
-    },  })
+    },
+  })
 
   let assistantMessage = ''
   for await (const delta of result.textStream) {
+    checkAbort(abortSignal)
     assistantMessage += delta
     emit({ type: 'text_delta', delta })
   }
 
+  checkAbort(abortSignal)
   const toolCallResults = await result.toolCalls
   const actions: AgentAction[] = []
 
@@ -68,10 +76,11 @@ If the user is only asking a question, answer conversationally without tools.`,
     const callId = `tool-${Date.now()}`
 
     // Step 1: Classify render type so the blueprint can target the correct mode
+    checkAbort(abortSignal)
     const renderType = await classifyRenderType({ openai, prompt: toolPrompt })
     const startTime = Date.now()
 
-    // // // Step 2: Generate combined blueprint + checklist in a single call
+    // Step 2: Generate combined blueprint + checklist in a single call
     const blueprintResult = await generateBlueprint({
       openai,
       userPrompt: toolPrompt,

@@ -44,6 +44,7 @@ export async function generateBlueprint(args: {
   userPrompt: string
   context: AgentContext
   renderType: RenderType
+  abortSignal?: AbortSignal
 }): Promise<
   { ok: true; blueprint: string; checklist: ChecklistItem[]; boilerplateKey: string | null } | { ok: false; error: string }
 > {
@@ -59,6 +60,11 @@ export async function generateBlueprint(args: {
   let lastError = ''
 
   while (attempt < MAX_RETRIES) {
+    if (args.abortSignal?.aborted) {
+      console.log('[generateBlueprint] ⚡ Aborted before attempt', attempt + 1)
+      return { ok: false, error: 'Generation aborted by user.' }
+    }
+
     attempt++
     console.log(`[generateBlueprint] attempt ${attempt}/${MAX_RETRIES}`)
 
@@ -114,6 +120,7 @@ export async function generateBlueprint(args: {
             reasoningEffort: 'low',
           },
         },
+        abortSignal: args.abortSignal,
       })
 
       if (!object.blueprint || object.blueprint.trim().length === 0) {
@@ -143,6 +150,10 @@ export async function generateBlueprint(args: {
 
       return { ok: true, blueprint: object.blueprint, checklist, boilerplateKey: object.boilerplateKey ?? null }
     } catch (error) {
+      if (args.abortSignal?.aborted || (error as DOMException).name === 'AbortError') {
+        console.log('[generateBlueprint] ⚡ Aborted during generateText HTTP call')
+        return { ok: false, error: 'Generation aborted by user.' }
+      }
       lastError = error instanceof Error ? error.message : 'Blueprint generation failed'
       console.error(`[generateBlueprint] attempt ${attempt} failed`, error)
     }
