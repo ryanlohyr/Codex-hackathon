@@ -10,8 +10,11 @@ const DEFAULT_RUNTIME_STATE: VisualizationRuntimeState = {
 
 function validate3DSceneCode(
   sceneCode: string,
+  options?: { runtimePanels?: boolean },
 ): { ok: true } | { ok: false; error: VisualizationValidationError } {
-  const checks = {
+  const runtimePanels = options?.runtimePanels ?? false
+
+  const checks: Record<string, boolean> = {
     hasPointerInteraction:
       sceneCode.includes('onClick') ||
       sceneCode.includes('onPointerDown') ||
@@ -19,19 +22,23 @@ function validate3DSceneCode(
       sceneCode.includes('onPointerOver'),
     hasAnimation:
       sceneCode.includes('helpers.useFrame') || sceneCode.includes('useFrame'),
-    hasLocalState:
-      sceneCode.includes('React.useState') || sceneCode.includes('useState('),
-    hasUIOverlay:
+    hasMultipleBodies:
+      sceneCode.includes('sphereGeometry') ||
+      sceneCode.includes('boxGeometry') ||
+      sceneCode.includes('torusGeometry'),
+  }
+
+  // When the runtime renders panels, generated code doesn't need local state or UI overlays
+  if (!runtimePanels) {
+    checks.hasLocalState =
+      sceneCode.includes('React.useState') || sceneCode.includes('useState(')
+    checks.hasUIOverlay =
       sceneCode.includes('helpers.ScreenOverlay') ||
       sceneCode.includes('ScreenOverlay') ||
       sceneCode.includes('helpers.Html') ||
       sceneCode.includes('Html') ||
       sceneCode.includes('<button') ||
-      sceneCode.includes('<input'),
-    hasMultipleBodies:
-      sceneCode.includes('sphereGeometry') ||
-      sceneCode.includes('boxGeometry') ||
-      sceneCode.includes('torusGeometry'),
+      sceneCode.includes('<input')
   }
 
   const failedChecks = Object.entries(checks)
@@ -187,9 +194,10 @@ function validate2DCanvasCode(
 export function validateGeneratedSceneCode(
   sceneCode: string,
   renderType: RenderType = '3D_WEBGL',
+  options?: { runtimePanels?: boolean },
 ): { ok: true } | { ok: false; error: VisualizationValidationError } {
   if (renderType === '2D_CANVAS') {
     return validate2DCanvasCode(sceneCode)
   }
-  return validate3DSceneCode(sceneCode)
+  return validate3DSceneCode(sceneCode, options)
 }

@@ -11,7 +11,7 @@ import { classifyRenderType } from './classify-render-type'
 import { CHAT_ONLY_SYSTEM_PROMPT } from './prompts'
 import type { AgentAction, AgentSSEEvent, AgentStreamRequest } from '../../types/agent'
 import type { VisualizationConfig } from '../../types/visualization'
-
+import fs from 'fs'
 
 
 export async function runGraphFlow(args: {
@@ -124,6 +124,7 @@ If the user is only asking a question, answer conversationally without tools.`,
       checklist,
       renderType,
       userPrompt: toolPrompt,
+      runtimePanels: true,
     })
 
     if (codeResult.ok) {
@@ -131,11 +132,13 @@ If the user is only asking a question, answer conversationally without tools.`,
         type: metadata.type,
         renderType,
         theme: metadata.theme,
-        title: metadata.title,
+        title: `"${metadata.title}-${Date.now()}"`,
         summary: metadata.summary,
         params: metadata.params,
         generatedSceneCode: codeResult.code,
         blueprint,
+        controls: metadata.controls,
+        scaffoldedSteps: metadata.scaffoldedSteps,
       }
 
       emit({
@@ -143,6 +146,8 @@ If the user is only asking a question, answer conversationally without tools.`,
         callId,
         result: { config, attempts: [] },
       })
+
+      console.log(`[runGraphFlow] visualization done — callId: ${callId}, title: ${config.title}`)
 
       actions.push({ type: 'create_visualization', config })
       assistantMessage = assistantMessage.trim() || `Created visualization: ${config.title}.`

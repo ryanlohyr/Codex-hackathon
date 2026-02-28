@@ -25,6 +25,8 @@ export const saveVisualizationArtifact = createServerFn({ method: 'POST' })
       updatedAt: now,
     })
 
+    console.log(`[saveVisualizationArtifact] saved id: ${data.id}, title: ${data.config.title}`)
+
     return { ok: true as const }
   })
 

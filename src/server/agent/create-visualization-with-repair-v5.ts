@@ -28,6 +28,7 @@ export async function generateVisualizationCodeV5(args: {
   checklist: ChecklistItem[]
   renderType: RenderType
   userPrompt: string
+  runtimePanels?: boolean
 }): Promise<
   | { ok: true; code: string; checklist: ChecklistItem[] }
   | { ok: false; error: VisualizationValidationError }
@@ -183,7 +184,7 @@ export async function generateVisualizationCodeV5(args: {
         input: nextInput,
         tools: editTools,
         parallel_tool_calls: false,
-        reasoning: { effort: 'high' },
+        // reasoning: { effort: 'high' },
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       })
 
@@ -297,7 +298,7 @@ export async function generateVisualizationCodeV5(args: {
     console.log('[v4] starting validation phase')
 
     for (let attempt = 1; attempt <= maxValidationAttempts; attempt++) {
-      const validation = validateGeneratedSceneCode(state.currentCode, args.renderType)
+      const validation = validateGeneratedSceneCode(state.currentCode, args.renderType, { runtimePanels: args.runtimePanels })
       if (validation.ok) {
         console.log('[v4] validation passed')
         break
@@ -357,7 +358,7 @@ export async function generateVisualizationCodeV5(args: {
   }
 
   // Final safety validation
-  const finalValidation = validateGeneratedSceneCode(state.currentCode, args.renderType)
+  const finalValidation = validateGeneratedSceneCode(state.currentCode, args.renderType, { runtimePanels: args.runtimePanels })
   if (!finalValidation.ok) {
     console.warn('[v4] final code failed validation', (finalValidation as { ok: false; error: VisualizationValidationError }).error)
     return { ok: false, error: (finalValidation as { ok: false; error: VisualizationValidationError }).error }

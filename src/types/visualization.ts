@@ -4,6 +4,34 @@ export type RenderType = '3D_WEBGL' | '2D_CANVAS'
 
 export type VisualizationTheme = 'light' | 'dark'
 
+export type SliderDef = {
+  key: string
+  label: string
+  min: number
+  max: number
+  step: number
+  defaultValue: number
+  unit?: string
+}
+
+export type ToggleDef = {
+  key: string
+  label: string
+  defaultValue: boolean
+}
+
+export type ScaffoldStep = {
+  instruction: string
+  concept: string
+  condition: string
+}
+
+export type VisualizationControls = {
+  title: string
+  sliders: SliderDef[]
+  toggles: ToggleDef[]
+}
+
 export type VisualizationConfig = {
   type: VisualizationType
   /** Defaults to '3D_WEBGL' when absent (backward compatibility with persisted data). */
@@ -16,6 +44,10 @@ export type VisualizationConfig = {
   generatedSceneCode?: string
   /** Free-text markdown lesson plan produced by the Teacher model. */
   blueprint?: string
+  /** Runtime-rendered control panel definition. When present, the runtime renders sliders/toggles instead of the generated code. */
+  controls?: VisualizationControls
+  /** Runtime-rendered scaffolded steps. When present, the runtime renders the steps panel instead of the generated code. */
+  scaffoldedSteps?: ScaffoldStep[]
 }
 
 export type ChatMessage = {

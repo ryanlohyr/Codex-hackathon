@@ -8,7 +8,7 @@ import type {
 } from 'openai/resources/responses/responses'
 import { z } from 'zod'
 import type { VisualizationValidationError } from '../../types/agent'
-import type { RenderType } from '../../types/visualization'
+import type { RenderType, VisualizationControls, ScaffoldStep } from '../../types/visualization'
 import { validateGeneratedSceneCode } from './validate-generated-scene-code'
 import { getRenderTypeRules } from './prompts'
 
@@ -19,6 +19,34 @@ import { getRenderTypeRules } from './prompts'
 
 const jsonPrimitiveSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
 const jsonValueSchema = z.union([jsonPrimitiveSchema, z.array(jsonPrimitiveSchema)])
+
+const sliderDefSchema = z
+  .object({
+    key: z.string().describe('camelCase param key matching the blueprint Simulation Variables Name column.'),
+    label: z.string().describe('Human-readable label from the blueprint Label column.'),
+    min: z.number(),
+    max: z.number(),
+    step: z.number(),
+    defaultValue: z.number(),
+    unit: z.string().optional().describe('Optional measurement unit.'),
+  })
+  .strict()
+
+const toggleDefSchema = z
+  .object({
+    key: z.string().describe('camelCase key stored in runtimeState.toggles.'),
+    label: z.string().describe('Button label, e.g. "Pause" or "Infall Tracker".'),
+    defaultValue: z.boolean(),
+  })
+  .strict()
+
+const scaffoldStepSchema = z
+  .object({
+    instruction: z.string().describe('What the student should do.'),
+    concept: z.string().describe('What they will learn.'),
+    condition: z.string().describe('Logic expression using variable names, e.g. "mass > 50".'),
+  })
+  .strict()
 
 const visualizationMetadataSchema = z
   .object({
@@ -36,6 +64,17 @@ const visualizationMetadataSchema = z
           .strict(),
       )
       .describe('Simulation variables with default values from the blueprint.'),
+    controls: z
+      .object({
+        title: z.string().describe('Panel title, e.g. "BLACK HOLE CONTROLS". Derive from the visualization topic.'),
+        sliders: z.array(sliderDefSchema).describe('One slider per blueprint Simulation Variable.'),
+        toggles: z.array(toggleDefSchema).describe('Toggle buttons. Always include isPaused (default false). Add others as needed from blueprint.'),
+      })
+      .strict()
+      .describe('Control panel definition extracted from the blueprint.'),
+    scaffoldedSteps: z
+      .array(scaffoldStepSchema)
+      .describe('Scaffolding steps from the blueprint.'),
   })
   .strict()
 
@@ -49,6 +88,8 @@ export async function generateVisualizationMetadata(args: {
   title: string
   summary: string
   params: Record<string, unknown>
+  controls: VisualizationControls
+  scaffoldedSteps: ScaffoldStep[]
 }> {
   const { object } = await generateObject({
     model: args.openai.responses('gpt-5.2'),
@@ -63,7 +104,9 @@ export async function generateVisualizationMetadata(args: {
       args.blueprint,
       '=== END BLUEPRINT ===',
       '',
-      'Return the type, theme, title, summary, and simulation params with their default values.',
+      'Return the type, theme, title, summary, simulation params with their default values,',
+      'control panel definition (sliders from Simulation Variables, toggles including isPaused),',
+      'and scaffolded steps from the blueprint.',
     ].join('\n'),
   })
 
@@ -73,6 +116,8 @@ export async function generateVisualizationMetadata(args: {
     title: object.title,
     summary: object.summary,
     params: Object.fromEntries(object.params.map((p) => [p.key, p.value])),
+    controls: object.controls as VisualizationControls,
+    scaffoldedSteps: object.scaffoldedSteps as ScaffoldStep[],
   }
 }
 
@@ -122,13 +167,15 @@ export async function generateChecklist(args: {
       '  - How state flows (e.g. "read cPenalty from runtimeState.params, use it to compute margin width")',
       '',
       'ORDER items like a senior engineer would build this:',
-      '  1. Scaffold: Scene function skeleton, destructure helpers, define palette object, declare all React.useState calls with defaults from the blueprint simulation variables.',
+      '  1. Scaffold: Scene function skeleton, destructure helpers, define palette object, initialize runtimeState.params defaults from the blueprint simulation variables.',
       '  2. Core visuals: All primary meshes, geometries, materials, particle systems, lines — the main things the student sees. Specify geometry type, material type, color, position, and size for each.',
-      '  3. Animation: useFrame logic for continuous motion, interpolation, per-frame state updates. Include exact formulas.',
-      '  4. Controls panel: ScreenOverlay panel (top-left) with EVERY slider and button from the blueprint simulation variables. For each slider: label, min, max, step, default, which runtimeState.params key it writes to. For each button/toggle: label, what it toggles.',
-      '  5. Info points: Every InfoPoint from the blueprint with exact label text, explanation text, position [x,y,z], and hex color. Spread them apart (min 2-3 units between any two).',
-      '  6. Scaffolded steps: Top-right panel with step counter, instruction text (bold), concept text (italic serif), condition expression evaluated against runtimeState.params, ← → navigation buttons, stepIndex state.',
-      '  7. Interactions: onClick/onPointer handlers, drag behavior, hover effects — anything the blueprint describes as interactive.',
+      '  3. Animation: useFrame logic for continuous motion, interpolation, per-frame state updates. Include exact formulas. Read all values from runtimeState.params and runtimeState.toggles (NOT React.useState — useFrame callbacks are not re-registered on re-render).',
+      '  4. Info points: Every InfoPoint from the blueprint with exact label text, explanation text, position [x,y,z], and hex color. Spread them apart (min 2-3 units between any two).',
+      '  5. Interactions: onClick/onPointer handlers, drag behavior, hover effects — anything the blueprint describes as interactive.',
+      '',
+      'IMPORTANT: The engine renders the control panel (sliders, toggles) and scaffolded steps panel automatically.',
+      'Do NOT include checklist items for: controls panel, slider UI, button UI, scaffolded steps panel, or step navigation.',
+      'The generated code only needs to initialize runtimeState.params defaults and build the 3D scene.',
       '',
       `Render type: ${args.renderType}`,
       '',

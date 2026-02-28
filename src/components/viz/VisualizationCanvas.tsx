@@ -6,6 +6,8 @@ import type { RootState } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import type { VisualizationConfig, VisualizationRuntimeState } from '../../types/visualization'
 import { SolarSystemScene } from './scenes/SolarSystemScene'
+import { RuntimeControlPanel } from './RuntimeControlPanel'
+import { RuntimeStepsPanel } from './RuntimeStepsPanel'
 
 type VisualizationCanvasProps = {
   config: VisualizationConfig
@@ -280,6 +282,21 @@ export function VisualizationCanvas({ config, runtimeState }: VisualizationCanva
           </EffectComposer>
         )}
       </Canvas>
+
+      {config.controls && (
+        <RuntimeControlPanel
+          controls={config.controls}
+          theme={config.theme}
+          runtimeState={runtimeState}
+        />
+      )}
+      {config.scaffoldedSteps && config.scaffoldedSteps.length > 0 && (
+        <RuntimeStepsPanel
+          steps={config.scaffoldedSteps}
+          theme={config.theme}
+          runtimeState={runtimeState}
+        />
+      )}
 
       {selectedInfo && (
         <div
