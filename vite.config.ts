@@ -2,10 +2,11 @@ import { defineConfig, type PluginOption } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import react from '@vitejs/plugin-react'
 import { nitro } from 'nitro/vite'
 
 export default defineConfig(({ command }) => {
-  const plugins: PluginOption[] = [tailwindcss(), tsConfigPaths(), tanstackStart()]
+  const plugins: PluginOption[] = [tailwindcss(), tsConfigPaths(), tanstackStart(), react()]
 
   // Only load nitro for production builds (Railway) — dev uses standard Vite dev server
   if (command === 'build') {
