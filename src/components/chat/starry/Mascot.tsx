@@ -4,7 +4,7 @@ type MascotState = 'idle' | 'listening' | 'thinking' | 'speaking'
 
 const MASCOT_ASSETS: Record<MascotState, { src: string; label: string }> = {
     idle: { src: '/idle.png', label: 'Ready' },
-    listening: { src: '/thinking.png', label: 'Listening...' },
+    listening: { src: '/listening.png', label: 'Listening...' },
     thinking: { src: '/thinking.png', label: 'Thinking...' },
     speaking: { src: '/speaking.png', label: 'Speaking...' },
 }
