@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useConversation } from '@elevenlabs/react'
 import { useAppStore } from '~/store/useAppStore'
-import { useLocation } from '@tanstack/react-router'
 import { Mascot } from '~/components/chat/starry/Mascot'
 import { AudioVisualizer } from '~/components/chat/starry/AudioVisualizer'
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Send } from 'lucide-react'
@@ -11,6 +10,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useAI } from '~/hooks/useAI'
+import { useLocation } from '@tanstack/react-router'
 
 type MascotState = 'idle' | 'listening' | 'thinking' | 'speaking'
 
@@ -272,21 +272,22 @@ export function VoiceAgentWidget() {
                 context: {
                     activeVisualizationId,
                     activeVisualizationConfig,
-                    activeRuntimeState: activeVisualizationState,
+                    activeRuntimeState: activeVisualizationState ?? { params: {}, toggles: {}, cues: [] },
                     recentMessages: transcript.slice(-5).map((m) => ({ role: m.role, content: m.text })),
                 },
                 routeContext,
                 onEvent: (event) => {
-                    console.log('[VoiceAgent] onEvent:', JSON.stringify(event, null, 2))
                     if (event.type === 'text_delta' && event.delta) {
                         assistantText += event.delta
                         setTranscript((prev) => {
-                            const lastMsg = prev[prev.length - 1]
+                            const updated = [...prev]
+                            const lastMsg = updated[updated.length - 1]
                             if (lastMsg?.role === 'assistant') {
-                                return [...prev.slice(0, -1), { role: 'assistant' as const, text: assistantText }]
+                                lastMsg.text = assistantText
                             } else {
-                                return [...prev, { role: 'assistant', text: assistantText }].slice(-9)
+                                updated.push({ role: 'assistant', text: assistantText })
                             }
+                            return updated.slice(-9)
                         })
                     } else if (event.type === 'tool_call') {
                         setIsProcessingTool(true)
@@ -328,7 +329,7 @@ export function VoiceAgentWidget() {
             isProcessingToolRef.current = false
             setMascotState(isConnected ? 'listening' : 'idle')
         }
-    }, [textInput, isSending, isConnected, addVisualizationNode, upsertVisualizationNodeConfig, streamPrompt, transcript, routeContext, activeVisualizationId, activeVisualizationConfig, activeVisualizationState, nodes])
+    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt, transcript, nodes, upsertVisualizationNodeConfig, routeContext, activeVisualizationId, activeVisualizationConfig, activeVisualizationState])
 
     // ── Collapsed FAB ──
     if (!isExpanded) {
@@ -401,66 +402,75 @@ export function VoiceAgentWidget() {
             {/* ── Floating Chat Bubbles ── */}
             {/* hide scrollbar CSS */}
             <style>{`.voice-chat-bubbles::-webkit-scrollbar { display: none; }`}</style>
-            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: 'calc(100vh - 350px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
-                <AnimatePresence mode="popLayout">
-                    {transcript.map((msg, i) => (
-                        <motion.div
-                            key={i}
-                            layout
-                            initial={{ opacity: 0, scale: 0.8, y: 20, rotateX: -15 }}
-                            animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
-                            exit={{ opacity: 0, scale: 0.8, y: -20 }}
-                            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-                            style={{
-                                justifySelf: 'flex-end',
-                                padding: '10px 14px',
-                                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                                fontSize: 13,
-                                lineHeight: 1.5,
-                                maxWidth: '90%',
-                                backdropFilter: 'blur(10px)',
-                                WebkitBackdropFilter: 'blur(10px),',
-                                pointerEvents: 'auto',
-                                ...(msg.role === 'user'
-                                    ? {
-                                        background: isDark ? 'linear-gradient(135deg, #0891b2, #06b6d4)' : 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
-                                        color: '#ffffff',
-                                        alignSelf: 'flex-end'
-                                    }
-                                    : {
-                                        background: isDark ? 'rgba(30,41,59,0.85)' : 'rgba(255,255,255,0.9)',
-                                        border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
-                                        color: isDark ? '#f8fafc' : '#1e293b',
-                                        alignSelf: 'flex-start'
-                                    }),
-                            }}
-                        >
-                            <Markdown
-                                remarkPlugins={[remarkMath]}
-                                rehypePlugins={[rehypeKatex]}
-                                components={{
-                                    p: ({ children }) => <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{children}</p>,
-                                    ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 16, listStyleType: 'disc' }}>{children}</ul>,
-                                    ol: ({ children }) => <ol style={{ margin: '4px 0', paddingLeft: 16, listStyleType: 'decimal' }}>{children}</ol>,
-                                    li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
-                                    code: ({ children, className }) => (
-                                        <code style={{
-                                            ...(className
-                                                ? { display: 'block', overflowX: 'auto', borderRadius: 6, padding: '4px 8px', margin: '4px 0', fontSize: 11 }
-                                                : { borderRadius: 4, padding: '1px 4px', fontSize: 11 }),
-                                            background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)',
-                                            fontFamily: 'monospace',
-                                        }}>{children}</code>
-                                    ),
-                                    a: ({ children, href }) => (
-                                        <a href={href} target="_blank" rel="noreferrer" style={{ color: isDark ? '#67e8f9' : '#0891b2', textDecoration: 'underline' }}>{children}</a>
-                                    ),
+            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: '50vh', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
+                <AnimatePresence>
+                    {transcript.map((msg, i) => {
+                        const isStreamingAssistantBubble =
+                            isSending && i === transcript.length - 1 && msg.role === 'assistant'
+
+                        return (
+                            <motion.div
+                                key={i}
+                                layout={isStreamingAssistantBubble ? false : 'position'}
+                                initial={{ opacity: 0, scale: 0.8, y: 20, rotateX: -15 }}
+                                animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
+                                exit={{ opacity: 0, scale: 0.8, y: -20 }}
+                                transition={
+                                    isStreamingAssistantBubble
+                                        ? { duration: 0 }
+                                        : { type: 'spring', damping: 20, stiffness: 300 }
+                                }
+                                style={{
+                                    justifySelf: 'flex-end',
+                                    padding: '10px 14px',
+                                    borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                    fontSize: 13,
+                                    lineHeight: 1.5,
+                                    maxWidth: '90%',
+                                    backdropFilter: 'blur(10px)',
+                                    WebkitBackdropFilter: 'blur(10px),',
+                                    pointerEvents: 'auto',
+                                    ...(msg.role === 'user'
+                                        ? {
+                                            background: isDark ? 'linear-gradient(135deg, #0891b2, #06b6d4)' : 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+                                            color: '#ffffff',
+                                            alignSelf: 'flex-end'
+                                        }
+                                        : {
+                                            background: isDark ? 'rgba(30,41,59,0.85)' : 'rgba(255,255,255,0.9)',
+                                            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
+                                            color: isDark ? '#f8fafc' : '#1e293b',
+                                            alignSelf: 'flex-start'
+                                        }),
                                 }}
                             >
-                                {msg.text}
-                            </Markdown>
-                        </motion.div>
-                    ))}
+                                <Markdown
+                                    remarkPlugins={[remarkMath]}
+                                    rehypePlugins={[rehypeKatex]}
+                                    components={{
+                                        p: ({ children }) => <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{children}</p>,
+                                        ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 16, listStyleType: 'disc' }}>{children}</ul>,
+                                        ol: ({ children }) => <ol style={{ margin: '4px 0', paddingLeft: 16, listStyleType: 'decimal' }}>{children}</ol>,
+                                        li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                                        code: ({ children, className }) => (
+                                            <code style={{
+                                                ...(className
+                                                    ? { display: 'block', overflowX: 'auto', borderRadius: 6, padding: '4px 8px', margin: '4px 0', fontSize: 11 }
+                                                    : { borderRadius: 4, padding: '1px 4px', fontSize: 11 }),
+                                                background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)',
+                                                fontFamily: 'monospace',
+                                            }}>{children}</code>
+                                        ),
+                                        a: ({ children, href }) => (
+                                            <a href={href} target="_blank" rel="noreferrer" style={{ color: isDark ? '#67e8f9' : '#0891b2', textDecoration: 'underline' }}>{children}</a>
+                                        ),
+                                    }}
+                                >
+                                    {msg.text}
+                                </Markdown>
+                            </motion.div>
+                        )
+                    })}
                     {/* Auto-scroll anchor */}
                     <div ref={chatEndRef} />
                 </AnimatePresence>
