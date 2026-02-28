@@ -62,6 +62,7 @@ If the user is only asking a question, answer conversationally without tools.`,
   let assistantMessage = ''
   for await (const delta of result.textStream) {
     checkAbort(abortSignal)
+    console.log('[runGraphFlow] text delta:', delta)
     assistantMessage += delta
     emit({ type: 'text_delta', delta })
   }

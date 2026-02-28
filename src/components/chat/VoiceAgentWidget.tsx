@@ -5,6 +5,10 @@ import { Mascot } from '~/components/chat/starry/Mascot'
 import { AudioVisualizer } from '~/components/chat/starry/AudioVisualizer'
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Send } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import Markdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { useAI } from '~/hooks/useAI'
 
 type MascotState = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -28,7 +32,7 @@ export function VoiceAgentWidget() {
     // Auto-scroll chat to bottom when new messages arrive
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [transcript])
+    }, [transcript.length])
 
     const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID
 
@@ -346,7 +350,30 @@ export function VoiceAgentWidget() {
                                     }),
                             }}
                         >
-                            {msg.text}
+                            <Markdown
+                                remarkPlugins={[remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
+                                components={{
+                                    p: ({ children }) => <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{children}</p>,
+                                    ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 16, listStyleType: 'disc' }}>{children}</ul>,
+                                    ol: ({ children }) => <ol style={{ margin: '4px 0', paddingLeft: 16, listStyleType: 'decimal' }}>{children}</ol>,
+                                    li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                                    code: ({ children, className }) => (
+                                        <code style={{
+                                            ...(className
+                                                ? { display: 'block', overflowX: 'auto', borderRadius: 6, padding: '4px 8px', margin: '4px 0', fontSize: 11 }
+                                                : { borderRadius: 4, padding: '1px 4px', fontSize: 11 }),
+                                            background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)',
+                                            fontFamily: 'monospace',
+                                        }}>{children}</code>
+                                    ),
+                                    a: ({ children, href }) => (
+                                        <a href={href} target="_blank" rel="noreferrer" style={{ color: isDark ? '#67e8f9' : '#0891b2', textDecoration: 'underline' }}>{children}</a>
+                                    ),
+                                }}
+                            >
+                                {msg.text}
+                            </Markdown>
                         </motion.div>
                     ))}
                     {/* Auto-scroll anchor */}
