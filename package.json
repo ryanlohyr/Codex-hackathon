@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "node .output/server/index.mjs",
+    "start": "HOST=0.0.0.0 node .output/server/index.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
