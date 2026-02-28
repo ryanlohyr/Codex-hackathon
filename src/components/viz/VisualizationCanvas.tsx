@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Html, OrbitControls, Stars, Text } from '@react-three/drei'
+import { Html, OrbitControls, Stars, Text, useTexture } from '@react-three/drei'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import type { RootState } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
@@ -134,6 +134,7 @@ function GeneratedCodeScene({
         state: VisualizationRuntimeState,
         helpers: {
           useFrame: typeof useFrame
+          useTexture: typeof useTexture
           Html: typeof Html
           ScreenOverlay: typeof ScreenOverlay
           InfoPoint: typeof InfoPoint
@@ -156,6 +157,7 @@ function GeneratedCodeScene({
     try {
       const result = compiled.fn(React, runtimeState, {
         useFrame,
+        useTexture,
         Html,
         ScreenOverlay,
         InfoPoint,
@@ -260,16 +262,18 @@ export function VisualizationCanvas({ config, runtimeState }: VisualizationCanva
           maxDistance={maxZoomDistance}
         />
 
-        {config.generatedSceneCode ? (
-          <GeneratedCodeScene
-            code={config.generatedSceneCode}
-            runtimeState={runtimeState}
-            onSelectInfo={setSelectedInfo}
-            isLight={isLight}
-          />
-        ) : config.type === 'solar-system' ? (
-          <SolarSystemScene config={config} runtimeState={runtimeState} />
-        ) : null}
+        <React.Suspense fallback={null}>
+          {config.generatedSceneCode ? (
+            <GeneratedCodeScene
+              code={config.generatedSceneCode}
+              runtimeState={runtimeState}
+              onSelectInfo={setSelectedInfo}
+              isLight={isLight}
+            />
+          ) : config.type === 'solar-system' ? (
+            <SolarSystemScene config={config} runtimeState={runtimeState} />
+          ) : null}
+        </React.Suspense>
 
         {!safeMode && (
           <EffectComposer>
