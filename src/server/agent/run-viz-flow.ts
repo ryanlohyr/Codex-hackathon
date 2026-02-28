@@ -12,6 +12,7 @@ export async function runVizFlow(args: {
 }): Promise<{ assistantMessage: string; actions: AgentAction[]; messageStreamed: boolean }> {
   const { openai, request, emit } = args
 
+console.log('running viz flow', request)
   const result = streamText({
     model: openai.responses('gpt-5.2'),
     system: EDIT_AGENT_SYSTEM_PROMPT,

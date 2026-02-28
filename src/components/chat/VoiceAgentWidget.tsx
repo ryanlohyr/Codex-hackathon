@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useConversation } from '@elevenlabs/react'
 import { useAppStore } from '~/store/useAppStore'
+import { useLocation } from '@tanstack/react-router'
 import { Mascot } from '~/components/chat/starry/Mascot'
 import { AudioVisualizer } from '~/components/chat/starry/AudioVisualizer'
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX, Send } from 'lucide-react'
@@ -16,6 +17,23 @@ type MascotState = 'idle' | 'listening' | 'thinking' | 'speaking'
 export function VoiceAgentWidget() {
     const theme = useAppStore((s) => s.theme)
     const addVisualizationNode = useAppStore((s) => s.addVisualizationNode)
+    const upsertVisualizationNodeConfig = useAppStore((s) => s.upsertVisualizationNodeConfig)
+    const activeVisualizationId = useAppStore((s) => s.activeVisualizationId)
+    const activeVisualizationState = useAppStore((s) => s.activeVisualizationState)
+    const nodes = useAppStore((s) => s.nodes)
+    const location = useLocation()
+    const routeContext = useMemo(
+        () => ({ route: location.pathname.startsWith('/viz/') ? 'viz' : 'graph' }) as const,
+        [location.pathname],
+    )
+    const activeNode = useMemo(
+        () => (activeVisualizationId ? nodes.find((node) => node.id === activeVisualizationId) : null),
+        [activeVisualizationId, nodes],
+    )
+    const activeVisualizationConfig = useMemo(
+        () => (activeNode && activeNode.type === 'visualizationNode' ? activeNode.data.config : null),
+        [activeNode],
+    )
     const [isExpanded, setIsExpanded] = useState(false)
     const [mascotState, setMascotState] = useState<MascotState>('idle')
     const [transcript, setTranscript] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([])
@@ -252,12 +270,12 @@ export function VoiceAgentWidget() {
             await streamPrompt({
                 prompt: text,
                 context: {
-                    activeVisualizationId: null,
-                    activeVisualizationConfig: null,
-                    activeRuntimeState: { params: {}, toggles: {}, cues: [] },
+                    activeVisualizationId,
+                    activeVisualizationConfig,
+                    activeRuntimeState: activeVisualizationState,
                     recentMessages: transcript.slice(-5).map((m) => ({ role: m.role, content: m.text })),
                 },
-                routeContext: { route: 'graph' },
+                routeContext,
                 onEvent: (event) => {
                     console.log('[VoiceAgent] onEvent:', JSON.stringify(event, null, 2))
                     if (event.type === 'text_delta' && event.delta) {
@@ -282,6 +300,16 @@ export function VoiceAgentWidget() {
                         for (const action of event.actions) {
                             if (action.type === 'create_visualization' && action.config) {
                                 addVisualizationNode(action.config)
+                            } else if (action.type === 'update_visualization_code') {
+                                const currentNode = nodes.find((n) => n.id === action.visualizationId)
+                                const currentConfig = currentNode?.type === 'visualizationNode' ? currentNode.data.config : null
+                                if (currentConfig) {
+                                    const updatedConfig = {
+                                        ...currentConfig,
+                                        generatedSceneCode: action.code,
+                                    }
+                                    upsertVisualizationNodeConfig(action.visualizationId, updatedConfig)
+                                }
                             }
                         }
                     }
@@ -300,7 +328,7 @@ export function VoiceAgentWidget() {
             isProcessingToolRef.current = false
             setMascotState(isConnected ? 'listening' : 'idle')
         }
-    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt, transcript])
+    }, [textInput, isSending, isConnected, addVisualizationNode, upsertVisualizationNodeConfig, streamPrompt, transcript, routeContext, activeVisualizationId, activeVisualizationConfig, activeVisualizationState, nodes])
 
     // ── Collapsed FAB ──
     if (!isExpanded) {
