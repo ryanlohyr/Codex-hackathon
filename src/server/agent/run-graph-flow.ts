@@ -33,6 +33,7 @@ If the user is only asking a question, answer conversationally without tools.`,
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),
+      { role: 'user' as const, content: request.prompt },
     ],
     providerOptions: {
       openai: {
