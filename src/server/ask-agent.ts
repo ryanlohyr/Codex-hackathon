@@ -16,8 +16,6 @@ export const askAgentStream = createServerFn({ method: 'POST' })
 
     const openai = createOpenAI({ apiKey })
     return createSSEStream(async (emit) => {
-      emit({ type: 'message_start' })
-
       const flowResult =
         data.routeContext.route === 'graph'
           ? await runGraphFlow({ openai, request: data, emit })

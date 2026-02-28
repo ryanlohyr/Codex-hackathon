@@ -259,17 +259,16 @@ export function VoiceAgentWidget() {
                 },
                 routeContext: { route: 'graph' },
                 onEvent: (event) => {
+                    console.log('[VoiceAgent] onEvent:', event)
                     if (event.type === 'text_delta' && event.delta) {
                         assistantText += event.delta
                         setTranscript((prev) => {
-                            const updated = [...prev]
-                            const lastMsg = updated[updated.length - 1]
+                            const lastMsg = prev[prev.length - 1]
                             if (lastMsg?.role === 'assistant') {
-                                lastMsg.text = assistantText
+                                return [...prev.slice(0, -1), { role: 'assistant' as const, text: assistantText }]
                             } else {
-                                updated.push({ role: 'assistant', text: assistantText })
+                                return [...prev, { role: 'assistant', text: assistantText }].slice(-9)
                             }
-                            return updated.slice(-9)
                         })
                     } else if (event.type === 'tool_call') {
                         setIsProcessingTool(true)
