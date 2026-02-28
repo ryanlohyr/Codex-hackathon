@@ -301,6 +301,16 @@ export function VoiceAgentWidget() {
                         for (const action of event.actions) {
                             if (action.type === 'create_visualization' && action.config) {
                                 addVisualizationNode(action.config)
+                            } else if (action.type === 'update_visualization_code') {
+                                const currentNode = nodes.find((n) => n.id === action.visualizationId)
+                                const currentConfig = currentNode?.type === 'visualizationNode' ? currentNode.data.config : null
+                                if (currentConfig) {
+                                    const updatedConfig = {
+                                        ...currentConfig,
+                                        generatedSceneCode: action.code,
+                                    }
+                                    upsertVisualizationNodeConfig(action.visualizationId, updatedConfig)
+                                }
                             }
                         }
                     }
@@ -319,8 +329,8 @@ export function VoiceAgentWidget() {
             isProcessingToolRef.current = false
             setMascotState(isConnected ? 'listening' : 'idle')
         }
-    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt, transcript])
-    some
+    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt, transcript, nodes, upsertVisualizationNodeConfig, routeContext, activeVisualizationId, activeVisualizationConfig, activeVisualizationState])
+
     // ── Collapsed FAB ──
     if (!isExpanded) {
         return (
