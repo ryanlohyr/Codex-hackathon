@@ -5,4 +5,4 @@ NIXPACKS_SPA_CADDY = "false"
 NITRO_HOST = "0.0.0.0"
 
 [start]
-cmd = "npm run start"
+cmd = "NITRO_HOST=0.0.0.0 NITRO_PORT=$PORT node .output/server/index.mjs"
