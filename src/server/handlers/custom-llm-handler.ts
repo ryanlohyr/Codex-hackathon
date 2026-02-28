@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { runGraphFlow } from '~/server/agent/run-graph-flow'
-import type { AgentSSEEvent, AgentStreamRequest, AgentAction } from '~/types/agent'
+import type { AgentSSEEvent, AgentStreamRequest } from '~/types/agent'
 import type { VisualizationRuntimeState } from '~/types/visualization'
 import { pushVisualization } from './viz-store'
 
@@ -63,8 +63,13 @@ export async function handleCustomLLMRequest(request: Request): Promise<Response
     const cleanedPrompt = userPrompt.replace(/[.\s…]+/g, '').trim()
     if (!userPrompt || cleanedPrompt.length < 2) {
         console.log(`[CustomLLM] ⚡ Rejecting garbage prompt: "${userPrompt.slice(0, 30)}"`)
-        // Close cleanly with no spoken content — ElevenLabs goes back to listening
         return sseEmpty()
+    }
+
+    // ── VIZ_READY gate: frontend signals viz is done, speak confirmation without running graph ──
+    if (userPrompt.includes('[VIZ_READY]')) {
+        console.log('[CustomLLM] ⚡ VIZ_READY gate — returning spoken confirmation')
+        return sseAck('Your visualization is ready! You can explore it on the canvas now.')
     }
 
     const apiKey = process.env.OPENAI_API_KEY
@@ -132,9 +137,6 @@ async function runGenerationInBackground(
 ): Promise<void> {
     console.log(`[CustomLLM] 🔄 Background generation started for: "${promptKey.slice(0, 50)}"`)
 
-    const collectedActions: AgentAction[] = []
-    let hasVisualizations = false
-
     const emit = (event: AgentSSEEvent) => {
         switch (event.type) {
             case 'tool_call':
@@ -142,12 +144,10 @@ async function runGenerationInBackground(
                 break
             case 'final':
                 console.log(`[CustomLLM] ← [background] final: ${event.actions.length} actions`)
-                collectedActions.push(...event.actions)
                 break
             case 'error':
                 console.log(`[CustomLLM] ← [background] error: ${event.message}`)
                 break
-            // text_delta events are ignored in background mode — no stream to write to
         }
     }
 
@@ -155,8 +155,8 @@ async function runGenerationInBackground(
         const flowResult = await runGraphFlow({ openai, request: agentRequest, emit })
         console.log(`[CustomLLM] ✓ Background generation complete. actions=${flowResult.actions.length}`)
 
-        const allActions = [...collectedActions, ...flowResult.actions]
-        for (const action of allActions) {
+        let hasVisualizations = false
+        for (const action of flowResult.actions) {
             if (action.type === 'create_visualization' && action.config) {
                 pushVisualization(action.config)
                 hasVisualizations = true
