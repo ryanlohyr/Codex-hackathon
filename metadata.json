@@ -1,0 +1,12 @@
+{
+  "type": "solar-system",
+  "theme": "dark",
+  "title": "How a Black Hole Works: Shadow, Horizon, Photon Sphere & Relativistic Effects",
+  "summary": "An interactive deep-space visualization showing a black hole’s shadow and event-horizon cue, photon sphere, glowing accretion disk, gravitational lensing of background stars, bent photon paths, and a probe demonstrating time dilation and spaghettification with guided exploration steps.",
+  "params": {
+    "blackHoleMass": 10,
+    "accretionRate": 0.35,
+    "inclinationDeg": 55,
+    "probeDistanceRs": 8
+  }
+}

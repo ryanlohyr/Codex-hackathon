@@ -1,0 +1,123 @@
+## Visual Style
+**Theme: dark** — a deep-space aesthetic maximizes contrast for faint starfields, lensing arcs, and subtle boundary cues (event horizon vs shadow), while making the accretion disk glow and relativistic effects feel immersive.
+
+**Palette (semantic roles)**
+- **background**: `#050814` (near-black blue; space backdrop)
+- **primaryGlow**: `#34d399` (cyan-green; photon paths & “physics overlays”)
+- **diskHot**: `#f59e0b` (amber; inner hot accretion region)
+- **diskCool**: `#fb7185` (pink-red; cooler outer disk / emission gradient)
+- **boundaryHighlight**: `#60a5fa` (soft blue; horizon/photon-sphere cues & lensing arcs)
+
+---
+
+## Learning Goal
+Understand how a black hole’s gravity shapes what we see—creating a **shadow**, defining an **event horizon**, forming a **photon sphere**, distorting background stars via **gravitational lensing**, and producing observable relativistic effects like **time dilation** and **tidal stretching**.
+
+---
+
+## Analogy
+**A heavy bowling ball on a trampoline covered with glow-in-the-dark marbles**: the ball represents the black hole; marbles are photons—some curve around, some orbit briefly, and some fall in—while the fabric’s steepness hints at how time and paths “tilt” near the hole.
+
+---
+
+## Visual Concept
+**Overall scene**
+- A central, nearly black circular **shadow** region, surrounded by a thin, luminous **event horizon boundary cue** (subtle ring/edge marker distinct from the shadow).
+- A slightly larger, brighter ring marking the **photon sphere** region (a “danger orbit” band where light can loop).
+- A glowing **accretion disk** around the black hole:
+  - **Inner region**: brighter and more yellow/white-hot (diskHot), visually indicating higher temperature.
+  - **Outer region**: redder/pinker (diskCool), dimmer, thicker-looking.
+  - Disk brightness and thickness respond to accretion rate.
+- A distant **starfield** background. Near the black hole, stars appear warped into **arcs** and occasional **partial rings** (Einstein ring-like features), strongest near the photon sphere region.
+- Several illustrative **photon paths**:
+  - Some bend and escape to the viewer.
+  - Some loop around (near photon sphere) before escaping.
+  - Some cross the horizon cue and terminate (capture).
+- **Infalling matter blobs/streamlines** spiral inward in the disk plane; a fraction visibly plunge past the horizon cue (disappearing).
+- A **probe object** (small spacecraft marker) on an approach trajectory:
+  - As it nears the horizon, it stretches along the radial direction (spaghettification cue).
+  - A **probe clock/pulse beacon** emits ticks/pulses; a **distant observer clock** sits in a corner HUD. The probe pulses appear to slow relative to the distant clock as the probe gets closer.
+
+**Spatial arrangement**
+- Black hole centered.
+- Disk is a tilted ellipse depending on viewing inclination; the “near side” appears brighter (optional Doppler-like emphasis as a visual hint, not necessarily physically exact unless desired).
+- Starfield fills the background; lensing arcs concentrate around the black hole.
+
+**Motion/animation**
+- Accretion disk rotates smoothly; inner region rotates faster than outer to suggest differential rotation.
+- Infalling blobs gradually spiral inward; occasional “plunge” events past the horizon cue.
+- Photon paths can animate as traveling light pulses showing direction and fate (escape/loop/capture).
+- Probe moves with user-controlled distance; stretching and time dilation effects update continuously.
+
+**What changes with user controls**
+- **Mass**: increases size scale of shadow/horizon cues and strengthens lensing; photon bending becomes more dramatic.
+- **Accretion rate**: thickens/brightens disk and increases infalling matter density; hotter inner glow becomes more prominent.
+- **Viewing inclination**: rotates disk from face-on (near circular) to edge-on (thin line); lensing arcs and apparent disk shape adjust.
+- **Probe distance**: moves probe inward/outward; increases tidal stretching and time-dilation difference as it approaches the horizon.
+
+---
+
+## Simulation Variables
+
+| Name | Label | Min | Max | Default | Unit |
+|---|---|---:|---:|---:|---|
+| blackHoleMass | Black Hole Mass | 1 | 50 | 10 | solar masses |
+| accretionRate | Accretion Rate | 0 | 1 | 0.35 | (relative) |
+| inclinationDeg | Viewing Inclination | 0 | 85 | 55 | degrees |
+| probeDistanceRs | Probe Distance | 2.2 | 20 | 8 | Schwarzschild radii (Rs) |
+
+---
+
+## Info Points
+1. **Label:** EVENT HORIZON  
+   **Explanation:** The event horizon is the boundary where escape becomes impossible—once anything crosses it, it cannot return or send signals back out.  
+   **Near:** the thin boundary cue ring just outside the shadow region  
+   **Color:** boundaryHighlight `#60a5fa`
+
+2. **Label:** SHADOW  
+   **Explanation:** The shadow is the dark region formed because many light paths are captured; it’s larger than the event horizon because gravity bends incoming light.  
+   **Near:** the central black area  
+   **Color:** background `#050814`
+
+3. **Label:** PHOTON SPHERE  
+   **Explanation:** A region where gravity is strong enough that light can orbit briefly; tiny changes decide whether a photon escapes or falls in.  
+   **Near:** the brighter ring outside the horizon cue  
+   **Color:** primaryGlow `#34d399`
+
+4. **Label:** ACCRETION DISK  
+   **Explanation:** Hot gas and dust spiral inward, heating up from friction and compression; the inner disk glows hotter and brighter than the outer disk.  
+   **Near:** the rotating disk structure  
+   **Color:** diskHot `#f59e0b` (with diskCool `#fb7185` gradient)
+
+5. **Label:** GRAVITATIONAL LENSING  
+   **Explanation:** The black hole’s gravity bends light from background stars, creating warped arcs and partial rings around the hole.  
+   **Near:** the starfield distortion arcs surrounding the black hole  
+   **Color:** boundaryHighlight `#60a5fa`
+
+6. **Label:** TIME DILATION  
+   **Explanation:** Clocks closer to the black hole run slower relative to a distant observer; signals from near the horizon appear increasingly slowed.  
+   **Near:** the probe clock/pulse indicator and the distant observer clock HUD  
+   **Color:** primaryGlow `#34d399`
+
+---
+
+## Scaffolding Steps
+1. **Instruction:** Set `inclinationDeg` to **0–10** and observe the disk and shadow from face-on.  
+   **Concept:** Viewing angle changes the *apparent shape* of the accretion disk and how symmetric the lensing appears.  
+   **Condition:** `inclinationDeg <= 10`
+
+2. **Instruction:** Increase `blackHoleMass` to **30** and compare lensing arcs and photon bending to the default.  
+   **Concept:** Greater mass strengthens gravitational bending and enlarges the characteristic shadow/horizon scale.  
+   **Condition:** `blackHoleMass >= 30`
+
+3. **Instruction:** Raise `accretionRate` to **0.7+** and identify the hotter inner region versus cooler outer region.  
+   **Concept:** Accretion controls disk brightness/thickness and highlights that inner regions are hotter due to stronger gravity and faster motion.  
+   **Condition:** `accretionRate >= 0.7`
+
+4. **Instruction:** Move the probe inward to `probeDistanceRs` **≤ 4** and watch the probe pulses compared with the distant clock.  
+   **Concept:** Gravitational time dilation increases strongly as distance decreases; signals “slow down” near the horizon.  
+   **Condition:** `probeDistanceRs <= 4`
+
+5. **Instruction:** Bring the probe to `probeDistanceRs` **≤ 2.6** and observe tidal stretching and the “point of no return” cue.  
+   **Concept:** Tidal forces grow rapidly near the black hole, and crossing the horizon marks irreversible capture even if the shadow boundary looks similar.  
+   **Condition:** `probeDistanceRs <= 2.6`
