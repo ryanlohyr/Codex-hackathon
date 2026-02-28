@@ -110,7 +110,7 @@ If the user is only asking a question, answer conversationally without tools.`,
       continue
     }
 
-    const { blueprint, checklist, boilerplateKey } = blueprintResult
+    const { blueprint, checklist, boilerplateKey, visualizationType, timelineEvents } = blueprintResult
     emit({ type: 'blueprint_ready', callId, blueprint })
 
     emit({
@@ -135,6 +135,7 @@ If the user is only asking a question, answer conversationally without tools.`,
         userPrompt: toolPrompt,
         runtimePanels: true,
         boilerplateKey,
+        visualizationType,
       }),
     ])
 
@@ -145,6 +146,7 @@ If the user is only asking a question, answer conversationally without tools.`,
         type: metadata.type,
         renderType,
         theme: metadata.theme,
+        visualizationType,
         title: `"${metadata.title}-${Date.now()}"`,
         summary: metadata.summary,
         params: metadata.params,
@@ -152,6 +154,7 @@ If the user is only asking a question, answer conversationally without tools.`,
         blueprint,
         controls: metadata.controls,
         scaffoldedSteps: metadata.scaffoldedSteps,
+        ...(visualizationType === 'timeline' && timelineEvents.length > 0 ? { timelineEvents } : {}),
       }
 
       emit({

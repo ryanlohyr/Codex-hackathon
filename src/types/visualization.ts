@@ -26,6 +26,13 @@ export type ScaffoldStep = {
   condition: string
 }
 
+export type TimelineEvent = {
+  id: string
+  label: string
+  description: string
+  year?: string
+}
+
 export type VisualizationControls = {
   title: string
   sliders: SliderDef[]
@@ -38,6 +45,8 @@ export type VisualizationConfig = {
   renderType?: RenderType
   /** Visual theme chosen by the teacher. Defaults to 'dark' when absent. */
   theme?: VisualizationTheme
+  /** Whether this is a timeline-based visualization or a standard one. Defaults to 'standard'. */
+  visualizationType?: 'timeline' | 'standard'
   params: Record<string, unknown>
   title: string
   summary: string
@@ -48,6 +57,8 @@ export type VisualizationConfig = {
   controls?: VisualizationControls
   /** Runtime-rendered scaffolded steps. When present, the runtime renders the steps panel instead of the generated code. */
   scaffoldedSteps?: ScaffoldStep[]
+  /** Timeline events for timeline-type visualizations. When present, the runtime renders a timeline panel at the bottom. */
+  timelineEvents?: TimelineEvent[]
 }
 
 export type ChatMessage = {

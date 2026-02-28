@@ -1,7 +1,14 @@
 import type { RenderType } from '../../types/visualization'
 
+export const BoilerplateKey = {
+  WEBGL_3D_REAL_GLOBE_V1: 'webgl_3d_real_globe_v1',
+  NO_TEMPLATE: 'no_template',
+} as const
+
+export type BoilerplateKey = (typeof BoilerplateKey)[keyof typeof BoilerplateKey]
+
 export type SceneBoilerplate = {
-  key: string
+  key: BoilerplateKey
   renderType: RenderType
   name: string
   whenToUse: string
@@ -138,7 +145,7 @@ return Scene;`
 
 export const SCENE_BOILERPLATES: SceneBoilerplate[] = [
   {
-    key: 'webgl_3d_real_globe_v1',
+    key: BoilerplateKey.WEBGL_3D_REAL_GLOBE_V1,
     renderType: '3D_WEBGL',
     name: 'Real Globe Starter',
     whenToUse:

@@ -8,6 +8,7 @@ import type { VisualizationConfig, VisualizationRuntimeState } from '../../types
 import { SolarSystemScene } from './scenes/SolarSystemScene'
 import { RuntimeControlPanel } from './RuntimeControlPanel'
 import { RuntimeStepsPanel } from './RuntimeStepsPanel'
+import { RuntimeTimelinePanel } from './RuntimeTimelinePanel'
 
 type VisualizationCanvasProps = {
   config: VisualizationConfig
@@ -297,6 +298,13 @@ export function VisualizationCanvas({ config, runtimeState }: VisualizationCanva
       {config.scaffoldedSteps && config.scaffoldedSteps.length > 0 && (
         <RuntimeStepsPanel
           steps={config.scaffoldedSteps}
+          theme={config.theme}
+          runtimeState={runtimeState}
+        />
+      )}
+      {config.visualizationType === 'timeline' && config.timelineEvents && config.timelineEvents.length > 0 && (
+        <RuntimeTimelinePanel
+          events={config.timelineEvents}
           theme={config.theme}
           runtimeState={runtimeState}
         />

@@ -43,6 +43,7 @@ export async function generateVisualizationCodeV5(args: {
   userPrompt: string
   runtimePanels?: boolean
   boilerplateKey?: string | null
+  visualizationType?: 'timeline' | 'standard'
 }): Promise<
   | { ok: true; code: string; checklist: ChecklistItem[] }
   | { ok: false; error: VisualizationValidationError }
@@ -155,6 +156,20 @@ export async function generateVisualizationCodeV5(args: {
           '',
           `NOTE: The code has been pre-populated with the "${matched.key}" template (${matched.name}).`,
           'Adapt this template to match the blueprint — customize colors, labels, info points, animations, and structure as needed using find_and_replace.',
+        ]
+      : []),
+    ...(args.visualizationType === 'timeline'
+      ? [
+          '',
+          '=== TIMELINE VISUALIZATION RULES ===',
+          'This is a TIMELINE visualization. The runtime renders a timeline panel at the bottom of the screen automatically.',
+          'The timeline panel writes the current event index to `runtimeState.params.__timelineIndex` (number, 0-based).',
+          'Your generated scene code MUST read `runtimeState.params.__timelineIndex` and update the 3D scene accordingly:',
+          '  - Transition camera, highlights, labels, or visible objects based on which timeline event is selected.',
+          '  - Use smooth interpolation (lerp) when transitioning between events for a polished feel.',
+          '  - Each event should have a visually distinct state in the scene (different objects visible, different positions, etc.).',
+          'Do NOT render any timeline UI yourself — the runtime handles that.',
+          '=== END TIMELINE VISUALIZATION RULES ===',
         ]
       : []),
   ].join('\n')

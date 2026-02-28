@@ -5,9 +5,11 @@ import type { AgentContext } from '../../types/agent'
 import type { RenderType } from '../../types/visualization'
 import type { ChecklistItem } from './create-visualization-with-repair'
 import { BLUEPRINT_SYSTEM_PROMPT, getRenderTypeRules } from './prompts'
-import { SCENE_BOILERPLATES } from './webgl-boilerplates'
+import { BoilerplateKey, SCENE_BOILERPLATES } from './webgl-boilerplates'
 
 const MAX_RETRIES = 5
+
+const boilerplateKeyValues = Object.values(BoilerplateKey) as [BoilerplateKey, ...BoilerplateKey[]]
 
 const blueprintWithChecklistSchema = z
   .object({
@@ -16,11 +18,29 @@ const blueprintWithChecklistSchema = z
       .describe(
         'The full Visualization Blueprint as a markdown document — includes Visual Style, Learning Goal, Analogy, Visual Concept, Simulation Variables, Info Points, and Scaffolding Steps sections.',
       ),
-    boilerplateKey: z
-      .string()
-      .nullable()
+    visualizationType: z
+      .enum(['timeline', 'standard'])
       .describe(
-        'If an available boilerplate template fits this visualization, set this to its key (e.g. "webgl_3d_real_globe_v1"). Set to null if no template is a good fit.',
+        'Set to "timeline" if the visualization is best represented as a chronological sequence of events (e.g. history, evolution, geological ages, biographical events). Otherwise set to "standard".',
+      ),
+    timelineEvents: z
+      .array(
+        z
+          .object({
+            id: z.string().describe('Short snake_case identifier for this event.'),
+            label: z.string().describe('Short label for the timeline marker (e.g. "Big Bang", "First Stars").'),
+            description: z.string().describe('One-sentence description of what happens at this point in time.'),
+            year: z.string().nullable().describe('Display string for the date/time (e.g. "13.8 Bya", "1969", "65 Ma"). Set to null if not applicable.'),
+          })
+          .strict(),
+      )
+      .describe(
+        'If visualizationType is "timeline", provide an ordered list of timeline events. If "standard", set to an empty array.',
+      ),
+    boilerplateKey: z
+      .enum(boilerplateKeyValues)
+      .describe(
+        'If an available boilerplate template fits this visualization, set this to its key (e.g. "webgl_3d_real_globe_v1"). Set to "no_template" if no template is a good fit.',
       ),
     checklist: z.array(
       z
@@ -46,7 +66,7 @@ export async function generateBlueprint(args: {
   renderType: RenderType
   abortSignal?: AbortSignal
 }): Promise<
-  { ok: true; blueprint: string; checklist: ChecklistItem[]; boilerplateKey: string | null } | { ok: false; error: string }
+  { ok: true; blueprint: string; checklist: ChecklistItem[]; boilerplateKey: string | null; visualizationType: 'timeline' | 'standard'; timelineEvents: Array<{ id: string; label: string; description: string; year?: string }> } | { ok: false; error: string }
 > {
   console.log('[generateBlueprint] starting', {
     renderType: args.renderType,
@@ -99,7 +119,7 @@ export async function generateBlueprint(args: {
           'The generated code only needs to initialize runtimeState.params defaults and build the 3D scene.',
           '',
           '=== AVAILABLE BOILERPLATE TEMPLATES ===',
-          'If a template below is a good starting point for this visualization, set boilerplateKey to its key. Otherwise set boilerplateKey to null.',
+          'If a template below is a good starting point for this visualization, set boilerplateKey to its key. Otherwise set boilerplateKey to "no_template".',
           ...SCENE_BOILERPLATES.filter((b) => b.renderType === args.renderType).map(
             (b) => `- key: "${b.key}" — ${b.name}. Use for: ${b.whenToUse}`,
           ),
@@ -148,7 +168,14 @@ export async function generateBlueprint(args: {
         checklistItems: checklist.map((i) => i.id),
       })
 
-      return { ok: true, blueprint: object.blueprint, checklist, boilerplateKey: object.boilerplateKey ?? null }
+      const resolvedKey = object.boilerplateKey === BoilerplateKey.NO_TEMPLATE ? null : object.boilerplateKey
+      const timelineEvents = object.timelineEvents.map((e) => ({
+        id: e.id,
+        label: e.label,
+        description: e.description,
+        ...(e.year ? { year: e.year } : {}),
+      }))
+      return { ok: true, blueprint: object.blueprint, checklist, boilerplateKey: resolvedKey, visualizationType: object.visualizationType, timelineEvents }
     } catch (error) {
       if (args.abortSignal?.aborted || (error as DOMException).name === 'AbortError') {
         console.log('[generateBlueprint] ⚡ Aborted during generateText HTTP call')
