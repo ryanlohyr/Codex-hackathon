@@ -259,7 +259,7 @@ export function VoiceAgentWidget() {
                 },
                 routeContext: { route: 'graph' },
                 onEvent: (event) => {
-                    console.log('[VoiceAgent] onEvent:', event)
+                    console.log('[VoiceAgent] onEvent:', JSON.stringify(event, null, 2))
                     if (event.type === 'text_delta' && event.delta) {
                         assistantText += event.delta
                         setTranscript((prev) => {
