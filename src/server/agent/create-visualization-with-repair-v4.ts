@@ -17,6 +17,9 @@ import {
   formatCodeState,
 } from './viz-edit-utils'
 import { formatBoilerplatesForPrompt, getSceneBoilerplate } from './webgl-boilerplates'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { fileURLToPath } from 'url'
 
 
 
@@ -43,6 +46,19 @@ const insertBoilerplateTool: FunctionTool = {
 }
 
 const v4Tools: FunctionTool[] = [...editTools, insertBoilerplateTool]
+
+// Load skills documentation
+function loadSkillsMarkdown(): string {
+  try {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = join(__filename, '..')
+    const skillsPath = join(__dirname, 'skills.md')
+    return readFileSync(skillsPath, 'utf-8')
+  } catch {
+    console.warn('[v4] Could not load skills.md')
+    return ''
+  }
+}
 
 function executeToolCallV4(
   toolName: string,
@@ -153,6 +169,7 @@ export async function generateVisualizationCodeV4(args: {
       'The function is called every frame — draw the full scene each time.',
     ].join('\n')
 
+  const skillsMarkdown = loadSkillsMarkdown()
   const instructions = [
     'You are a code-generation agent. You receive a checklist and current code state.',
     'Use find_and_replace to write and edit code. Work through uncompleted checklist items in order.',
@@ -161,6 +178,12 @@ export async function generateVisualizationCodeV4(args: {
     'Do NOT explain, narrate, or send text-only responses. Just make tool calls.',
     'When all checklist items are done, stop making tool calls.',
     '',
+    ...(skillsMarkdown ? [
+      '=== AVAILABLE SKILLS ===',
+      skillsMarkdown,
+      '=== END AVAILABLE SKILLS ===',
+      '',
+    ] : []),
     'CRITICAL RULES (violations crash the app):',
     '',
     'THREE IS NOT AVAILABLE:',

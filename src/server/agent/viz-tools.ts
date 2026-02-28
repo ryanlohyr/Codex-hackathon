@@ -48,15 +48,15 @@ export const vizTools = {
     description: 'Remove all cues from the visualization',
     inputSchema: z.object({}),
   }),
-  edit_code: tool({
-    description:
-      'Edit the generated scene code of the active visualization. Use this when the user wants to change visual appearance, behavior, colors, shapes, animations, layout, or any aspect of how the visualization looks or works.',
-    inputSchema: z.object({
-      instruction: z
-        .string()
-        .describe('Description of what to change in the visualization code'),
-    }),
-  }),
+  // edit_code: tool({
+  //   description:
+  //     'Edit the generated scene code of the active visualization. Use this when the user wants to change visual appearance, behavior, colors, shapes, animations, layout, or any aspect of how the visualization looks or works.',
+  //   inputSchema: z.object({
+  //     instruction: z
+  //       .string()
+  //       .describe('Description of what to change in the visualization code'),
+  //   }),
+  // }),
 }
 
 export function parseToolCall(name: string, args: Record<string, unknown>): VisualizationCommand | null {
