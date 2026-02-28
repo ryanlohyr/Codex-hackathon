@@ -1,15 +1,14 @@
 import type { VisualizationConfig } from '../../types/visualization'
 
-// Simple in-memory store for completed visualization configs.
-// The custom-llm-handler pushes results here when generation completes.
-// The VoiceAgentWidget polls to pick them up (since the ElevenLabs SSE stream
-// is usually already disconnected by the time generation finishes).
+// Simple in-memory queue for completed visualization configs.
+// custom-llm-handler pushes, VoiceAgentWidget polls to pick them up.
+// Dedup is handled upstream in custom-llm-handler (garbage filter + activeGenerations Set).
 
 const pendingVisualizations: VisualizationConfig[] = []
 
 export function pushVisualization(config: VisualizationConfig) {
     pendingVisualizations.push(config)
-    console.log(`[VizStore] Pushed visualization: ${config.title} (queue: ${pendingVisualizations.length})`)
+    console.log(`[VizStore] ✓ Pushed visualization: "${config.title}" (queue: ${pendingVisualizations.length})`)
 }
 
 export function popVisualizations(): VisualizationConfig[] {

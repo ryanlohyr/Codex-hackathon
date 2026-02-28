@@ -17,6 +17,8 @@ export function VoiceAgentWidget() {
     const [isMuted, setIsMuted] = useState(false)
     const [isMicMuted, setIsMicMuted] = useState(false)
     const [isProcessingTool, setIsProcessingTool] = useState(false)
+    // Ref mirrors isProcessingTool so onModeChange closure always reads latest value (fixes stale closure bug)
+    const isProcessingToolRef = useRef(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
 
     // Auto-scroll chat to bottom when new messages arrive
@@ -45,39 +47,33 @@ export function VoiceAgentWidget() {
             if (!text) return
 
             if (role === 'user') {
+                // Filter garbage transcriptions (ElevenLabs sends "......" for silence)
+                const cleaned = text.replace(/[.\s…]+/g, '').trim()
+                if (cleaned.length < 2) {
+                    console.log(`[VoiceAgent] 🚫 Filtered garbage user message: "${text}"`)
+                    return
+                }
                 setTranscript((prev) => [...prev.slice(-8), { role: 'user', text }])
             } else {
-                // Targeted detection: we own these exact messages from our backend
-                const isHoldMessage =
-                    text.includes('One moment please') ||
-                    text.includes('Let me create a visualization')
+                // Detect our new backend ack message — signals tool is running in background
+                const isBackendAck =
+                    text.includes("Got it! I'm working") ||
+                    text.includes("Check the canvas")
 
-                // Show processing state when backend is working on a tool call
-                if (isHoldMessage) {
+                if (isBackendAck) {
                     setIsProcessingTool(true)
+                    isProcessingToolRef.current = true
                     setMascotState('thinking')
                 }
 
-                // Filter duplicate hold messages from transcript
-                setTranscript((prev) => {
-                    if (isHoldMessage) {
-                        const lastAssistant = [...prev].reverse().find(m => m.role === 'assistant')
-                        if (lastAssistant && (
-                            lastAssistant.text.includes('One moment please') ||
-                            lastAssistant.text.includes('Let me create a visualization')
-                        )) {
-                            return prev // Skip duplicate hold message
-                        }
-                    }
-                    return [...prev.slice(-8), { role: 'assistant', text }]
-                })
+                setTranscript((prev) => [...prev.slice(-8), { role: 'assistant', text }])
             }
         },
         onModeChange: (mode: { mode: string }) => {
             console.log('[VoiceAgent] Mode change:', mode)
             if (mode.mode === 'listening') {
-                // Don't clear processing state if backend is still running a tool
-                if (!isProcessingTool) {
+                // Read from ref (not state) to avoid stale closure — ref is always current
+                if (!isProcessingToolRef.current) {
                     setMascotState('listening')
                 }
             } else if (mode.mode === 'speaking') {
@@ -85,6 +81,7 @@ export function VoiceAgentWidget() {
             } else if (mode.mode === 'thinking') {
                 setMascotState('thinking')
                 setIsProcessingTool(true)
+                isProcessingToolRef.current = true
             }
         },
         onInterruption: () => {
@@ -108,7 +105,6 @@ export function VoiceAgentWidget() {
 
     // ── Poll for completed visualizations (side-channel from backend) ──
     useEffect(() => {
-        if (conversation.status !== 'connected') return
         const interval = setInterval(async () => {
             try {
                 const res = await fetch('/api/viz-results')
@@ -119,7 +115,8 @@ export function VoiceAgentWidget() {
                         console.log(`[VoiceAgent] ✨ Visualization added: ${config.title}`)
                     }
                     setIsProcessingTool(false)
-                    setMascotState('speaking')
+                    isProcessingToolRef.current = false
+                    setMascotState(conversation.status === 'connected' ? 'listening' : 'idle')
                     setTranscript((prev) => [...prev.slice(-8), {
                         role: 'assistant' as const,
                         text: `I've created your visualization! You can see it on the canvas now.`,
