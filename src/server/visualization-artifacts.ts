@@ -35,6 +35,6 @@ export const getVisualizationArtifact = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const repository = getVisualizationArtifactRepository()
     const record = await repository.get(data.id)
-    return record
+    return record as any
   })
 
