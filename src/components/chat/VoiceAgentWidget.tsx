@@ -402,7 +402,7 @@ export function VoiceAgentWidget() {
             {/* ── Floating Chat Bubbles ── */}
             {/* hide scrollbar CSS */}
             <style>{`.voice-chat-bubbles::-webkit-scrollbar { display: none; }`}</style>
-            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: '50vh', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
+            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: '300px', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
                 <AnimatePresence>
                     {transcript.map((msg, i) => {
                         const isStreamingAssistantBubble =
