@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+.output
+dist
+.env
+.env.*
+*.log
+npm-debug.log*
+pnpm-debug.log*
+coverage
