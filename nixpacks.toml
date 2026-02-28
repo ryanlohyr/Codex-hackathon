@@ -1,0 +1,8 @@
+[variables]
+# Force Railway/Nixpacks to run the app server instead of SPA Caddy mode.
+NIXPACKS_SPA_CADDY = "false"
+# Ensure Nitro binds publicly inside the container.
+NITRO_HOST = "0.0.0.0"
+
+[start]
+cmd = "npm run start"

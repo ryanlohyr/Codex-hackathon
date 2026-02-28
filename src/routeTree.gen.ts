@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as VizIdRouteImport } from './routes/viz.$id'
 import { Route as ApiVizResultsRouteImport } from './routes/api/viz-results'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as V1ChatCompletionsRouteImport } from './routes/v1/chat.completions'
 
 const IndexRoute = IndexRouteImport.update({
@@ -29,6 +30,11 @@ const ApiVizResultsRoute = ApiVizResultsRouteImport.update({
   path: '/api/viz-results',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const V1ChatCompletionsRoute = V1ChatCompletionsRouteImport.update({
   id: '/v1/chat/completions',
   path: '/v1/chat/completions',
@@ -37,12 +43,14 @@ const V1ChatCompletionsRoute = V1ChatCompletionsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/viz-results': typeof ApiVizResultsRoute
   '/viz/$id': typeof VizIdRoute
   '/v1/chat/completions': typeof V1ChatCompletionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/viz-results': typeof ApiVizResultsRoute
   '/viz/$id': typeof VizIdRoute
   '/v1/chat/completions': typeof V1ChatCompletionsRoute
@@ -50,18 +58,30 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/viz-results': typeof ApiVizResultsRoute
   '/viz/$id': typeof VizIdRoute
   '/v1/chat/completions': typeof V1ChatCompletionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/viz-results' | '/viz/$id' | '/v1/chat/completions'
+  fullPaths:
+    | '/'
+    | '/api/health'
+    | '/api/viz-results'
+    | '/viz/$id'
+    | '/v1/chat/completions'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/viz-results' | '/viz/$id' | '/v1/chat/completions'
+  to:
+    | '/'
+    | '/api/health'
+    | '/api/viz-results'
+    | '/viz/$id'
+    | '/v1/chat/completions'
   id:
     | '__root__'
     | '/'
+    | '/api/health'
     | '/api/viz-results'
     | '/viz/$id'
     | '/v1/chat/completions'
@@ -69,6 +89,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiVizResultsRoute: typeof ApiVizResultsRoute
   VizIdRoute: typeof VizIdRoute
   V1ChatCompletionsRoute: typeof V1ChatCompletionsRoute
@@ -97,6 +118,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVizResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v1/chat/completions': {
       id: '/v1/chat/completions'
       path: '/v1/chat/completions'
@@ -109,6 +137,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiVizResultsRoute: ApiVizResultsRoute,
   VizIdRoute: VizIdRoute,
   V1ChatCompletionsRoute: V1ChatCompletionsRoute,

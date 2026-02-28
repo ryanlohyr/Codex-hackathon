@@ -25,8 +25,13 @@ export function VoiceAgentWidget() {
     // Ref mirrors isProcessingTool so onModeChange closure always reads latest value (fixes stale closure bug)
     const isProcessingToolRef = useRef(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
+    // Session counter — incremented on "New chat" to ignore stale viz-poll results from previous sessions
+    const sessionIdRef = useRef(0)
+    // Flag for re-applying mute after session restart (used by onConnect callback)
+    const pendingMuteRef = useRef(false)
     const [textInput, setTextInput] = useState('')
     const [isSending, setIsSending] = useState(false)
+    const [isResettingChat, setIsResettingChat] = useState(false)
     const { streamPrompt } = useAI()
 
     // Auto-scroll chat to bottom when new messages arrive
@@ -41,6 +46,12 @@ export function VoiceAgentWidget() {
         onConnect: () => {
             console.log('[VoiceAgent] Connected')
             setMascotState('idle')
+            // Re-apply mute after session restart (fixes timing issue where setVolume is called before WebRTC is ready)
+            if (pendingMuteRef.current) {
+                pendingMuteRef.current = false
+                conversation.setVolume({ volume: 0 })
+                console.log('[VoiceAgent] Re-applied mute after session restart')
+            }
         },
         onDisconnect: () => {
             console.log('[VoiceAgent] Disconnected')
@@ -113,11 +124,19 @@ export function VoiceAgentWidget() {
 
     // ── Poll for completed visualizations (side-channel from backend) ──
     useEffect(() => {
+        // Capture session ID at effect creation time — if it changes (New chat), ignore stale results
+        const capturedSessionId = sessionIdRef.current
+
         const interval = setInterval(async () => {
             try {
                 const res = await fetch('/api/viz-results')
                 const data = await res.json()
                 if (data.configs && data.configs.length > 0) {
+                    // Ignore results from a previous session
+                    if (sessionIdRef.current !== capturedSessionId) {
+                        console.log('[VoiceAgent] ⚡ Ignoring stale viz-results from previous session')
+                        return
+                    }
                     for (const config of data.configs) {
                         addVisualizationNode(config)
                         console.log(`[VoiceAgent] ✨ Visualization added: ${config.title}`)
@@ -175,6 +194,45 @@ export function VoiceAgentWidget() {
         }
         setIsMuted(!isMuted)
     }, [conversation, isMuted])
+
+    const handleStartNewChat = useCallback(async () => {
+        if (isResettingChat) return
+
+        // Increment session ID so the viz-poll ignores stale results from this session
+        sessionIdRef.current += 1
+
+        setTranscript([])
+        setTextInput('')
+        setIsProcessingTool(false)
+        isProcessingToolRef.current = false
+        setMascotState(conversation.status === 'connected' ? 'thinking' : 'idle')
+
+        if (conversation.status !== 'connected') {
+            return
+        }
+
+        if (!agentId) {
+            console.error('[VoiceAgent] Cannot reset session context: missing agent ID')
+            setMascotState('idle')
+            return
+        }
+
+        setIsResettingChat(true)
+
+        try {
+            await conversation.endSession()
+            // Schedule mute re-application for when the new session connects
+            if (isMuted) {
+                pendingMuteRef.current = true
+            }
+            await conversation.startSession({ agentId, connectionType: 'webrtc' })
+        } catch (error) {
+            console.error('[VoiceAgent] Failed to reset ElevenLabs session context:', error)
+            setMascotState('idle')
+        } finally {
+            setIsResettingChat(false)
+        }
+    }, [isResettingChat, conversation, agentId, isMuted])
 
     const isDark = theme === 'dark'
     const isConnected = conversation.status === 'connected'
@@ -243,7 +301,7 @@ export function VoiceAgentWidget() {
             isProcessingToolRef.current = false
             setMascotState(isConnected ? 'listening' : 'idle')
         }
-    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt])
+    }, [textInput, isSending, isConnected, addVisualizationNode, streamPrompt, transcript])
 
     // ── Collapsed FAB ──
     if (!isExpanded) {
@@ -475,23 +533,43 @@ export function VoiceAgentWidget() {
                                 )}
                             </AnimatePresence>
                         </div>
-                        <button
-                            onClick={() => setIsExpanded(false)}
-                            style={{
-                                border: 'none',
-                                background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                                borderRadius: 6,
-                                padding: '3px 8px',
-                                fontSize: 10,
-                                fontWeight: 600,
-                                letterSpacing: '0.08em',
-                                textTransform: 'uppercase' as const,
-                                color: isDark ? '#94a3b8' : '#64748b',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            ✕
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {(() => {
+                                const headerBtnStyle = {
+                                    border: 'none',
+                                    background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                                    borderRadius: 6,
+                                    padding: '3px 8px',
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase' as const,
+                                    color: isDark ? '#94a3b8' : '#64748b',
+                                } as const
+                                return (
+                                    <>
+                                        <button
+                                            onClick={handleStartNewChat}
+                                            disabled={isSending || isResettingChat}
+                                            style={{
+                                                ...headerBtnStyle,
+                                                cursor: isSending || isResettingChat ? 'default' : 'pointer',
+                                                opacity: isSending || isResettingChat ? 0.45 : 1,
+                                            }}
+                                            title="Start a new chat"
+                                        >
+                                            {isResettingChat ? 'Resetting…' : 'New chat'}
+                                        </button>
+                                        <button
+                                            onClick={() => setIsExpanded(false)}
+                                            style={{ ...headerBtnStyle, cursor: 'pointer' }}
+                                        >
+                                            ✕
+                                        </button>
+                                    </>
+                                )
+                            })()}
+                        </div>
                     </div>
 
 

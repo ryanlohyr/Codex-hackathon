@@ -27,6 +27,7 @@ type AppState = {
   addChatMessage: (message: ChatMessage) => void
   addVisualizationNode: (config: VisualizationConfig) => string
   upsertVisualizationNodeConfig: (id: string, config: VisualizationConfig) => void
+  removeVisualizationNode: (id: string) => void
   setNodes: (nodes: Updater<AppNode[]>) => void
   setEdges: (edges: Updater<Edge[]>) => void
   setActiveVisualization: (id: string | null) => void
@@ -121,6 +122,20 @@ export const useAppStore = create<AppState>()(
             data: { config, createdAt: Date.now() },
           }
           return { nodes: [...state.nodes, newNode] }
+        })
+      },
+      removeVisualizationNode: (id) => {
+        set((state) => {
+          const isRemovingActiveNode = state.activeVisualizationId === id
+
+          return {
+            nodes: state.nodes.filter((node) => node.id !== id),
+            edges: state.edges.filter((edge) => edge.source !== id && edge.target !== id),
+            activeVisualizationId: isRemovingActiveNode ? null : state.activeVisualizationId,
+            activeVisualizationState: isRemovingActiveNode
+              ? createInitialRuntimeState()
+              : state.activeVisualizationState,
+          }
         })
       },
       setNodes: (updater) => {
