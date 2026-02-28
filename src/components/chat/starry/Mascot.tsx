@@ -21,8 +21,8 @@ export function Mascot({ state }: { state: MascotState }) {
     const isAnimating = state === 'speaking' || state === 'listening' || state === 'thinking'
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <div style={{ position: 'relative', width: 72, height: 72 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <div style={{ position: 'relative', width: 96, height: 96 }}>
                 <AnimatePresence mode="wait">
                     <motion.img
                         key={asset.src}

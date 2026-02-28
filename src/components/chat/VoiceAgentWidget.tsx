@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useConversation } from '@elevenlabs/react'
 import { useAppStore } from '~/store/useAppStore'
-import { Mascot } from '~/components/chat/nanobanana/Mascot'
-import { AudioVisualizer } from '~/components/chat/nanobanana/AudioVisualizer'
+import { Mascot } from '~/components/chat/starry/Mascot'
+import { AudioVisualizer } from '~/components/chat/starry/AudioVisualizer'
 import { Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -20,6 +20,8 @@ export function VoiceAgentWidget() {
     // Ref mirrors isProcessingTool so onModeChange closure always reads latest value (fixes stale closure bug)
     const isProcessingToolRef = useRef(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
+    // Tracks ElevenLabs listening mode independently of mascotState (which is gated by isProcessingTool)
+    const [isAgentListening, setIsAgentListening] = useState(false)
 
     // Auto-scroll chat to bottom when new messages arrive
     useEffect(() => {
@@ -72,13 +74,16 @@ export function VoiceAgentWidget() {
         onModeChange: (mode: { mode: string }) => {
             console.log('[VoiceAgent] Mode change:', mode)
             if (mode.mode === 'listening') {
+                setIsAgentListening(true)
                 // Read from ref (not state) to avoid stale closure — ref is always current
                 if (!isProcessingToolRef.current) {
                     setMascotState('listening')
                 }
             } else if (mode.mode === 'speaking') {
+                setIsAgentListening(false)
                 setMascotState('speaking')
             } else if (mode.mode === 'thinking') {
+                setIsAgentListening(false)
                 setMascotState('thinking')
                 setIsProcessingTool(true)
                 isProcessingToolRef.current = true
@@ -121,13 +126,22 @@ export function VoiceAgentWidget() {
                         role: 'assistant' as const,
                         text: `I've created your visualization! You can see it on the canvas now.`,
                     }])
+                    // Trigger ElevenLabs to speak confirmation — backend VIZ_READY gate returns ack without runGraphFlow
+                    if (conversation.status === 'connected') {
+                        try {
+                            conversation.sendUserMessage('[VIZ_READY] The visualization is ready on the canvas.')
+                            console.log('[VoiceAgent] ✅ Sent VIZ_READY to trigger spoken confirmation')
+                        } catch (e) {
+                            console.log('[VoiceAgent] sendUserMessage unavailable, skipping spoken confirmation')
+                        }
+                    }
                 }
             } catch (e) {
                 // Silently ignore poll failures
             }
         }, 3000)
         return () => clearInterval(interval)
-    }, [conversation.status, addVisualizationNode])
+    }, [conversation.status, conversation, addVisualizationNode])
 
     const handleStartConversation = useCallback(async () => {
         if (!agentId) {
@@ -234,7 +248,7 @@ export function VoiceAgentWidget() {
             {/* ── Floating Chat Bubbles ── */}
             {/* hide scrollbar CSS */}
             <style>{`.voice-chat-bubbles::-webkit-scrollbar { display: none; }`}</style>
-            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 260, right: 24, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end', width: 340, pointerEvents: 'none', zIndex: 9999, maxHeight: 'calc(100vh - 300px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
+            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 250, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: 'calc(100vh - 290px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
                 <AnimatePresence mode="popLayout">
                     {transcript.map((msg, i) => (
                         <motion.div
@@ -246,14 +260,13 @@ export function VoiceAgentWidget() {
                             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
                             style={{
                                 justifySelf: 'flex-end',
-                                padding: '12px 16px',
-                                borderRadius: msg.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                                fontSize: 14,
+                                padding: '10px 14px',
+                                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                fontSize: 13,
                                 lineHeight: 1.5,
                                 maxWidth: '90%',
                                 backdropFilter: 'blur(10px)',
-                                WebkitBackdropFilter: 'blur(10px)',
-                                boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(0,0,0,0.1)',
+                                WebkitBackdropFilter: 'blur(10px),',
                                 pointerEvents: 'auto',
                                 ...(msg.role === 'user'
                                     ? {
@@ -272,43 +285,6 @@ export function VoiceAgentWidget() {
                             {msg.text}
                         </motion.div>
                     ))}
-                    {/* Typing indicator when agent is speaking/thinking */}
-                    {(mascotState === 'speaking' || mascotState === 'thinking') && (transcript.length === 0 || transcript[transcript.length - 1].role === 'user') && (
-                        <motion.div
-                            layout
-                            initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.8, y: -20 }}
-                            style={{
-                                alignSelf: 'flex-start',
-                                padding: '12px 16px',
-                                borderRadius: '20px 20px 20px 4px',
-                                background: isDark ? 'rgba(30,41,59,0.85)' : 'rgba(255,255,255,0.9)',
-                                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
-                                backdropFilter: 'blur(10px)',
-                                WebkitBackdropFilter: 'blur(10px)',
-                                display: 'flex',
-                                gap: 6,
-                                alignItems: 'center',
-                                pointerEvents: 'auto',
-                                boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(0,0,0,0.1)',
-                            }}
-                        >
-                            {[0, 1, 2].map((i) => (
-                                <motion.span
-                                    key={i}
-                                    animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-                                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                                    style={{
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: '50%',
-                                        background: isDark ? '#38bdf8' : '#0891b2',
-                                    }}
-                                />
-                            ))}
-                        </motion.div>
-                    )}
                     {/* Auto-scroll anchor */}
                     <div ref={chatEndRef} />
                 </AnimatePresence>
@@ -325,7 +301,7 @@ export function VoiceAgentWidget() {
                         bottom: 24,
                         right: 24,
                         zIndex: 9999,
-                        width: 340,
+                        width: 280,
                         borderRadius: 20,
                         overflow: 'visible',
                         background: isDark
@@ -343,54 +319,13 @@ export function VoiceAgentWidget() {
                         flexDirection: 'column' as const,
                     }}
                 >
-                    {/* ── Cute Floating Tool Processing Badge ── */}
-                    <AnimatePresence>
-                        {isProcessingTool && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 15, scale: 0.8 }}
-                                animate={{ opacity: 1, y: -20, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.8 }}
-                                transition={{ type: 'spring', damping: 15, stiffness: 400 }}
-                                style={{
-                                    position: 'absolute',
-                                    top: -15, // floats right above the main background
-                                    left: '50%',
-                                    transform: 'translateX(-50%)',
-                                    background: isDark
-                                        ? 'linear-gradient(135deg, #0891b2, #06b6d4)'
-                                        : 'linear-gradient(135deg, #0891b2, #22d3ee)',
-                                    padding: '8px 16px',
-                                    borderRadius: '999px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    boxShadow: isDark
-                                        ? '0 0 20px rgba(8,145,178,0.4)'
-                                        : '0 10px 25px rgba(8,145,178,0.3)',
-                                    border: '1px solid rgba(255,255,255,0.2)',
-                                    zIndex: 10,
-                                }}
-                            >
-                                <motion.span
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                                    style={{ fontSize: 16, display: 'inline-block' }}
-                                >
-                                    ✨
-                                </motion.span>
-                                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '0.02em' }}>
-                                    Doing magic...
-                                </span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                    {/* ── Header ── */}
+                    {/* ── Header with inline processing badge ── */}
                     <div
                         style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            padding: '16px 20px 8px',
+                            padding: '12px 16px 6px',
                         }}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -414,6 +349,40 @@ export function VoiceAgentWidget() {
                             >
                                 MindCanvas
                             </span>
+                            {/* Inline processing badge */}
+                            <AnimatePresence>
+                                {isProcessingTool && (
+                                    <motion.span
+                                        initial={{ opacity: 0, scale: 0.8, x: -8 }}
+                                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                                        exit={{ opacity: 0, scale: 0.8, x: -8 }}
+                                        transition={{ type: 'spring', damping: 20, stiffness: 400 }}
+                                        style={{
+                                            background: isDark
+                                                ? 'linear-gradient(135deg, #0891b2, #06b6d4)'
+                                                : 'linear-gradient(135deg, #0891b2, #22d3ee)',
+                                            padding: '3px 10px',
+                                            borderRadius: '999px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 5,
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: '#fff',
+                                            letterSpacing: '0.02em',
+                                        }}
+                                    >
+                                        <motion.span
+                                            animate={{ rotate: 360 }}
+                                            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                                            style={{ fontSize: 12, display: 'inline-block' }}
+                                        >
+                                            ✨
+                                        </motion.span>
+                                        Generating...
+                                    </motion.span>
+                                )}
+                            </AnimatePresence>
                         </div>
                         <button
                             onClick={() => setIsExpanded(false)}
@@ -421,7 +390,7 @@ export function VoiceAgentWidget() {
                                 border: 'none',
                                 background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
                                 borderRadius: 6,
-                                padding: '4px 10px',
+                                padding: '3px 8px',
                                 fontSize: 10,
                                 fontWeight: 600,
                                 letterSpacing: '0.08em',
@@ -435,14 +404,18 @@ export function VoiceAgentWidget() {
                     </div>
 
 
-                    {/* ── Mascot ── */}
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 2px' }}>
-                        <Mascot state={mascotState} />
-                    </div>
-
-                    {/* ── Audio Visualizer ── */}
-                    <div style={{ padding: '0 16px 4px' }}>
-                        <AudioVisualizer isActive={conversation.isSpeaking} />
+                    {/* ── Mascot + Audio Visualizer (background layer) ── */}
+                    <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', padding: '4px 0 4px', minHeight: 110 }}>
+                        {/* Visualizer fills the bottom half — hidden when idle */}
+                        {isConnected && (
+                            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '50%', zIndex: 0, opacity: 0.6 }}>
+                                <AudioVisualizer isActive={conversation.isSpeaking || isAgentListening} />
+                            </div>
+                        )}
+                        {/* Mascot on top */}
+                        <div style={{ position: 'relative', zIndex: 1 }}>
+                            <Mascot state={mascotState} />
+                        </div>
                     </div>
 
                     {/* ── Controls ── */}
@@ -451,8 +424,8 @@ export function VoiceAgentWidget() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: 16,
-                            padding: '4px 20px 14px',
+                            gap: 12,
+                            padding: '2px 16px 12px',
                         }}
                     >
                         {isConnected ? (
@@ -463,8 +436,8 @@ export function VoiceAgentWidget() {
                                     whileHover={{ scale: 1.08 }}
                                     whileTap={{ scale: 0.92 }}
                                     style={{
-                                        width: 44,
-                                        height: 44,
+                                        width: 36,
+                                        height: 36,
                                         borderRadius: '50%',
                                         border: 'none',
                                         cursor: 'pointer',
@@ -476,7 +449,7 @@ export function VoiceAgentWidget() {
                                     }}
                                     title={isMuted ? 'Unmute' : 'Mute'}
                                 >
-                                    {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                                    {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                                 </motion.button>
 
                                 {/* Hang up */}
@@ -485,8 +458,8 @@ export function VoiceAgentWidget() {
                                     whileHover={{ scale: 1.06 }}
                                     whileTap={{ scale: 0.92 }}
                                     style={{
-                                        width: 56,
-                                        height: 56,
+                                        width: 44,
+                                        height: 44,
                                         borderRadius: '50%',
                                         border: 'none',
                                         cursor: 'pointer',
@@ -495,11 +468,11 @@ export function VoiceAgentWidget() {
                                         justifyContent: 'center',
                                         background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                                         color: '#ffffff',
-                                        boxShadow: '0 4px 16px rgba(239,68,68,0.35)',
+                                        boxShadow: '0 4px 12px rgba(239,68,68,0.3)',
                                     }}
                                     title="End conversation"
                                 >
-                                    <PhoneOff size={22} />
+                                    <PhoneOff size={18} />
                                 </motion.button>
 
                                 {/* Mic mute toggle */}
@@ -511,8 +484,8 @@ export function VoiceAgentWidget() {
                                     whileHover={{ scale: 1.08 }}
                                     whileTap={{ scale: 0.92 }}
                                     style={{
-                                        width: 44,
-                                        height: 44,
+                                        width: 36,
+                                        height: 36,
                                         borderRadius: '50%',
                                         border: 'none',
                                         cursor: 'pointer',
@@ -530,7 +503,7 @@ export function VoiceAgentWidget() {
                                     }}
                                     title={isMicMuted ? 'Unmute mic' : 'Mute mic'}
                                 >
-                                    {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                                    {isMicMuted ? <MicOff size={16} /> : <Mic size={16} />}
                                 </motion.button>
                             </>
                         ) : (
@@ -539,8 +512,8 @@ export function VoiceAgentWidget() {
                                 whileHover={{ scale: 1.06 }}
                                 whileTap={{ scale: 0.92 }}
                                 style={{
-                                    width: 56,
-                                    height: 56,
+                                    width: 44,
+                                    height: 44,
                                     borderRadius: '50%',
                                     border: 'none',
                                     cursor: 'pointer',
@@ -549,11 +522,11 @@ export function VoiceAgentWidget() {
                                     justifyContent: 'center',
                                     background: 'linear-gradient(135deg, #0891b2, #06b6d4)',
                                     color: '#ffffff',
-                                    boxShadow: '0 4px 16px rgba(8,145,178,0.35)',
+                                    boxShadow: '0 4px 12px rgba(8,145,178,0.3)',
                                 }}
                                 title="Start conversation"
                             >
-                                <Phone size={22} />
+                                <Phone size={18} />
                             </motion.button>
                         )}
                     </div>
