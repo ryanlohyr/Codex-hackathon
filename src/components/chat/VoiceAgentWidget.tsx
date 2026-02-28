@@ -374,16 +374,24 @@ export function VoiceAgentWidget() {
             {/* ── Floating Chat Bubbles ── */}
             {/* hide scrollbar CSS */}
             <style>{`.voice-chat-bubbles::-webkit-scrollbar { display: none; }`}</style>
-            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: 'calc(100vh - 350px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
-                <AnimatePresence mode="popLayout">
-                    {transcript.map((msg, i) => (
+            <div className="voice-chat-bubbles" style={{ position: 'fixed', bottom: 310, right: 24, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', width: 280, pointerEvents: 'none', zIndex: 9999, maxHeight: '50vh', overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, scrollbarWidth: 'none' as any }}>
+                <AnimatePresence>
+                    {transcript.map((msg, i) => {
+                        const isStreamingAssistantBubble =
+                            isSending && i === transcript.length - 1 && msg.role === 'assistant'
+
+                        return (
                         <motion.div
                             key={i}
-                            layout
+                            layout={isStreamingAssistantBubble ? false : 'position'}
                             initial={{ opacity: 0, scale: 0.8, y: 20, rotateX: -15 }}
                             animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
                             exit={{ opacity: 0, scale: 0.8, y: -20 }}
-                            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                            transition={
+                                isStreamingAssistantBubble
+                                    ? { duration: 0 }
+                                    : { type: 'spring', damping: 20, stiffness: 300 }
+                            }
                             style={{
                                 justifySelf: 'flex-end',
                                 padding: '10px 14px',
@@ -433,7 +441,8 @@ export function VoiceAgentWidget() {
                                 {msg.text}
                             </Markdown>
                         </motion.div>
-                    ))}
+                        )
+                    })}
                     {/* Auto-scroll anchor */}
                     <div ref={chatEndRef} />
                 </AnimatePresence>
