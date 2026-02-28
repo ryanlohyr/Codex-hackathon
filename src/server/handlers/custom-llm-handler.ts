@@ -4,19 +4,51 @@ import type { AgentSSEEvent, AgentStreamRequest, AgentAction } from '~/types/age
 import type { VisualizationRuntimeState } from '~/types/visualization'
 import { pushVisualization } from './viz-store'
 
-// In-memory cache to prevent ElevenLabs retries from spawning multiple parallel pipelines
-const activeGenerations = new Map<string, { startedAt: number; abortController: AbortController }>()
+// Track prompt keys that are currently being generated in the background
+// Used only to prevent duplicate background tasks — NOT for hold messages
+const activeGenerations = new Set<string>()
+
+/** Build a minimal SSE response with a single spoken message then [DONE] */
+function sseAck(text: string): Response {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+        start(controller) {
+            const chunk = { choices: [{ delta: { content: text }, index: 0, finish_reason: null }] }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+            const done = { choices: [{ delta: {}, index: 0, finish_reason: 'stop' }] }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(done)}\n\n`))
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+        },
+    })
+    return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+    })
+}
+
+/** Build a minimal SSE response with just [DONE] — silently closes the turn */
+function sseEmpty(): Response {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+        start(controller) {
+            const done = { choices: [{ delta: {}, index: 0, finish_reason: 'stop' }] }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(done)}\n\n`))
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+        },
+    })
+    return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+    })
+}
 
 export async function handleCustomLLMRequest(request: Request): Promise<Response> {
     console.log('[CustomLLM] ═══ NEW REQUEST ═══')
     console.log('[CustomLLM] Method:', request.method)
     console.log('[CustomLLM] URL:', request.url)
-
-    // In production we should limit what we log from headers
     console.log('[CustomLLM] Origin:', request.headers.get('origin') || 'unknown')
 
     const body = await request.json()
-    // Don't log the full giant body in production, just the shape
     console.log('[CustomLLM] Body received with keys:', Object.keys(body))
 
     // ── Extract the last user message from OpenAI-style messages ──
@@ -25,14 +57,14 @@ export async function handleCustomLLMRequest(request: Request): Promise<Response
     const userPrompt = lastUserMessage?.content ?? ''
 
     console.log(`[CustomLLM] Messages count: ${messages.length}`)
-    console.log(`[CustomLLM] User prompt: "${userPrompt.slice(0, 100)}..."`)
+    console.log(`[CustomLLM] User prompt: "${userPrompt.slice(0, 100)}"`)
 
-    if (!userPrompt) {
-        console.log('[CustomLLM] ✗ No user message found, returning 400')
-        return new Response(
-            JSON.stringify({ error: 'No user message found' }),
-            { status: 400, headers: { 'Content-Type': 'application/json' } },
-        )
+    // ── Reject garbage/empty prompts (e.g. "......" from ElevenLabs silence) ──
+    const cleanedPrompt = userPrompt.replace(/[.\s…]+/g, '').trim()
+    if (!userPrompt || cleanedPrompt.length < 2) {
+        console.log(`[CustomLLM] ⚡ Rejecting garbage prompt: "${userPrompt.slice(0, 30)}"`)
+        // Close cleanly with no spoken content — ElevenLabs goes back to listening
+        return sseEmpty()
     }
 
     const apiKey = process.env.OPENAI_API_KEY
@@ -44,35 +76,16 @@ export async function handleCustomLLMRequest(request: Request): Promise<Response
         )
     }
 
-    // ── Request Deduplication ──
+    // ── Deduplication: if already running this prompt in background, ignore silently ──
     const promptKey = userPrompt.trim().toLowerCase().slice(0, 200)
-    const existing = activeGenerations.get(promptKey)
-    if (existing && Date.now() - existing.startedAt < 300_000) {
-        console.log(`[CustomLLM] ⚡ Duplicate request detected for "${promptKey.slice(0, 50)}..." — sending hold message`)
-        // IMPORTANT: Do NOT send empty [DONE] — ElevenLabs interprets that as
-        // "agent has nothing to say" and after 3 empty retries, kills the session.
-        // Instead, send a real spoken message so the TTS has something to play.
-        const stream = new ReadableStream({
-            start(controller) {
-                const encoder = new TextEncoder()
-                const holdMsg = { choices: [{ delta: { content: 'One moment please, I\'m still working on that. ' }, index: 0, finish_reason: null }] }
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(holdMsg)}\n\n`))
-                const doneChunk = { choices: [{ delta: {}, index: 0, finish_reason: 'stop' }] }
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneChunk)}\n\n`))
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-                controller.close()
-            }
-        })
-        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+    if (activeGenerations.has(promptKey)) {
+        console.log(`[CustomLLM] ⚡ Already generating for "${promptKey.slice(0, 50)}" — ignoring retry`)
+        // Close silently — ElevenLabs will go to listening mode, no hold message spam
+        return sseEmpty()
     }
-
-    // Register this new generation
-    const generationAbortController = new AbortController()
-    activeGenerations.set(promptKey, { startedAt: Date.now(), abortController: generationAbortController })
 
     const openai = createOpenAI({ apiKey })
 
-    // ── Build the minimal AgentContext required by our flows ──
     const emptyRuntimeState: VisualizationRuntimeState = {
         params: {},
         toggles: {},
@@ -95,148 +108,73 @@ export async function handleCustomLLMRequest(request: Request): Promise<Response
         routeContext: { route: 'graph' as const },
     }
 
-    // ── Abort signal for interruption handling ──
-    // IMPORTANT: We do NOT couple request.signal to the generation abort controller.
-    // ElevenLabs will disconnect and retry the same prompt on timeout (~10s),
-    // which fires request.signal.abort. If we kill the generation on that signal,
-    // we abort expensive LLM work that should continue running.
-    //
-    // Instead: request.signal only controls the SSE stream (stops writing to a
-    // closed connection). The generation runs independently and is only aborted
-    // if we explicitly decide to (e.g., a genuinely different prompt supersedes it).
-    const requestAbortSignal = request.signal
-    let streamAborted = false
-    let deltaCount = 0
+    // ── Fire-and-Forget: run generation in background, respond immediately ──
+    // This is the key architectural change:
+    // - We do NOT await runGraphFlow before responding.
+    // - ElevenLabs gets an ack in <100ms and the turn closes cleanly.
+    // - No more 10s timeouts → no more "......" retries → no hold messages.
+    // - Results (visualizations) are pushed to viz-store, frontend polls for them.
+    activeGenerations.add(promptKey)
 
-    function handleStreamDisconnect() {
-        if (streamAborted) return
-        streamAborted = true
-        console.log(`[CustomLLM] ⚡ HTTP connection closed after ${deltaCount} deltas (generation continues running)`)
-        // NOTE: We intentionally do NOT call generationAbortController.abort() here.
-        // The generation should keep going — the next ElevenLabs retry will get the dedup response.
+    // Kick off the generation without awaiting
+    void runGenerationInBackground(openai, agentRequest, promptKey)
+
+    // Respond IMMEDIATELY with a short spoken ack
+    console.log('[CustomLLM] ⚡ Fire-and-forget: responding immediately, generation running in background')
+    return sseAck("Got it! I'm working on that now. Check the canvas in a moment.")
+}
+
+/** Runs the full LLM pipeline in the background, stores any visualizations in viz-store */
+async function runGenerationInBackground(
+    openai: ReturnType<typeof createOpenAI>,
+    agentRequest: AgentStreamRequest,
+    promptKey: string,
+): Promise<void> {
+    console.log(`[CustomLLM] 🔄 Background generation started for: "${promptKey.slice(0, 50)}"`)
+
+    const collectedActions: AgentAction[] = []
+    let hasVisualizations = false
+
+    const emit = (event: AgentSSEEvent) => {
+        switch (event.type) {
+            case 'tool_call':
+                console.log(`[CustomLLM] ← [background] tool_call: ${event.toolName}`)
+                break
+            case 'final':
+                console.log(`[CustomLLM] ← [background] final: ${event.actions.length} actions`)
+                collectedActions.push(...event.actions)
+                break
+            case 'error':
+                console.log(`[CustomLLM] ← [background] error: ${event.message}`)
+                break
+            // text_delta events are ignored in background mode — no stream to write to
+        }
     }
 
-    if (requestAbortSignal) {
-        console.log('[CustomLLM] AbortSignal available, listening for disconnect')
-        requestAbortSignal.addEventListener('abort', handleStreamDisconnect)
-    } else {
-        console.log('[CustomLLM] ⚠ No AbortSignal on request')
+    try {
+        const flowResult = await runGraphFlow({ openai, request: agentRequest, emit })
+        console.log(`[CustomLLM] ✓ Background generation complete. actions=${flowResult.actions.length}`)
+
+        const allActions = [...collectedActions, ...flowResult.actions]
+        for (const action of allActions) {
+            if (action.type === 'create_visualization' && action.config) {
+                pushVisualization(action.config)
+                hasVisualizations = true
+                console.log(`[CustomLLM] ✓ Pushed visualization to store: "${action.config.title}"`)
+            }
+        }
+
+        if (!hasVisualizations) {
+            // For non-viz responses: store the text as a pending message so frontend can display it
+            // (The frontend polls /api/viz-results, so text-only responses just won't appear in transcript)
+            // This is acceptable for a demo — all voice interactions lead to visualizations
+            console.log(`[CustomLLM] ℹ No visualizations in this response: "${flowResult.assistantMessage.slice(0, 80)}"`)
+        }
+    } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+        console.log(`[CustomLLM] ✗ Background generation ERROR: ${errorMsg}`)
+    } finally {
+        activeGenerations.delete(promptKey)
+        console.log(`[CustomLLM] 🏁 Background generation finished for: "${promptKey.slice(0, 50)}"`)
     }
-
-    // ── Stream OpenAI Chat Completions–format SSE ──
-    console.log('[CustomLLM] Creating ReadableStream...')
-    const stream = new ReadableStream({
-        async start(controller) {
-            const encoder = new TextEncoder()
-
-            function sendDelta(content: string) {
-                if (streamAborted) {
-                    // console.log(`[CustomLLM] ⚡ sendDelta SKIPPED (aborted): "${content.slice(0, 50)}..."`)
-                    return
-                }
-                try {
-                    deltaCount++
-                    const chunk = {
-                        choices: [{ delta: { content }, index: 0, finish_reason: null }],
-                    }
-                    const encoded = `data: ${JSON.stringify(chunk)}\n\n`
-                    controller.enqueue(encoder.encode(encoded))
-                    // console.log(`[CustomLLM] → Delta #${deltaCount}: "${content.slice(0, 80)}"`)
-                } catch (err) {
-                    streamAborted = true
-                    console.log(`[CustomLLM] ✗ sendDelta ERROR (controller closed?):`, err)
-                }
-            }
-
-            const collectedActions: AgentAction[] = []
-
-            const emit = (event: AgentSSEEvent) => {
-                if (streamAborted) {
-                    return
-                }
-                // console.log(`[CustomLLM] ← SSE event: type=${event.type}`)
-                switch (event.type) {
-                    case 'text_delta':
-                        sendDelta(event.delta)
-                        break
-                    case 'tool_call':
-                        console.log(`[CustomLLM] ← tool_call: ${event.toolName}`)
-                        // Send conversational text IMMEDIATELY so ElevenLabs has
-                        // something to speak while the tool processes (~30-60s)
-                        sendDelta(`Absolutely! Let me create a visualization for you. This will take a moment while I design it. `)
-                        break
-                    case 'final':
-                        console.log(`[CustomLLM] ← final: ${event.actions.length} actions`)
-                        collectedActions.push(...event.actions)
-                        break
-                    case 'error':
-                        console.log(`[CustomLLM] ← error: ${event.message}`)
-                        sendDelta(`Sorry, I encountered an error: ${event.message}. `)
-                        break
-                }
-            }
-
-            try {
-                console.log('[CustomLLM] Calling runGraphFlow...')
-                const flowResult = await runGraphFlow({ openai, request: agentRequest, emit, abortSignal: generationAbortController.signal })
-                console.log(`[CustomLLM] runGraphFlow complete. messageStreamed=${flowResult.messageStreamed}, actions=${flowResult.actions.length}, aborted=${streamAborted}`)
-
-                if (!streamAborted && !flowResult.messageStreamed) {
-                    console.log(`[CustomLLM] Sending full assistantMessage`)
-                    sendDelta(flowResult.assistantMessage)
-                }
-
-                // Push ALL completed visualizations to side-channel store
-                // (frontend polls this — the SSE stream is usually already aborted)
-                const allActions = [...collectedActions, ...flowResult.actions]
-                for (const action of allActions) {
-                    if (action.type === 'create_visualization' && action.config) {
-                        pushVisualization(action.config)
-                        console.log(`[CustomLLM] ✓ Pushed visualization to store: ${action.config.title}`)
-                        if (!streamAborted) {
-                            sendDelta(` I've created a visualization called "${action.config.title}". You can see it on the canvas now.`)
-                        }
-                    }
-                }
-            } catch (err) {
-                if (streamAborted || (err as DOMException).name === 'AbortError') {
-                    console.log('[CustomLLM] ⚡ Stream aborted during runGraphFlow (expected on interruption)')
-                } else {
-                    const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-                    console.log(`[CustomLLM] ✗ runGraphFlow ERROR: ${errorMsg}`)
-                    sendDelta(`Sorry, something went wrong: ${errorMsg}`)
-                }
-            }
-
-
-
-            // ── End the SSE stream ──
-            if (!streamAborted) {
-                try {
-                    console.log(`[CustomLLM] Sending finish + [DONE] (total deltas: ${deltaCount})`)
-                    const doneChunk = {
-                        choices: [{ delta: {}, index: 0, finish_reason: 'stop' }],
-                    }
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneChunk)}\n\n`))
-                    controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-                } catch (err) {
-                    console.log('[CustomLLM] ✗ Error writing [DONE]:', err)
-                }
-            } else {
-                console.log(`[CustomLLM] ⚡ Skipping [DONE] (stream was aborted at delta #${deltaCount})`)
-            }
-            try { controller.close() } catch { /* already closed */ }
-            console.log('[CustomLLM] ═══ STREAM ENDED ═══')
-            activeGenerations.delete(promptKey)
-        },
-    })
-
-    console.log('[CustomLLM] Returning SSE Response')
-    return new Response(stream, {
-        headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-        },
-    })
 }
